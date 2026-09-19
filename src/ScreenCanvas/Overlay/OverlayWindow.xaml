@@ -1,0 +1,21 @@
+<Window x:Class="ScreenCanvas.Overlay.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ShowInTaskbar="False" Topmost="True" ResizeMode="NoResize"
+        ShowActivated="False" Focusable="True">
+  <Grid x:Name="InputRoot" Background="#01000000" PreviewMouseLeftButtonDown="InputRoot_OnPreviewMouseLeftButtonDown"
+        PreviewMouseMove="InputRoot_OnPreviewMouseMove" PreviewMouseLeftButtonUp="InputRoot_OnPreviewMouseLeftButtonUp"
+        MouseLeftButtonDown="InputRoot_OnMouseLeftButtonDown"
+        MouseMove="InputRoot_OnMouseMove" MouseLeftButtonUp="InputRoot_OnMouseLeftButtonUp"
+        LostMouseCapture="InputRoot_OnLostMouseCapture">
+    <Border x:Name="BoardSurface" Background="Transparent" />
+    <InkCanvas x:Name="InkSurface" Background="Transparent"
+               EditingMode="None" UseCustomCursor="False" />
+    <!-- Kept above ink so an in-place text editor can receive keyboard/mouse input. -->
+    <Canvas x:Name="ShapeSurface" Background="{x:Null}" />
+    <Canvas x:Name="SpotlightSurface" IsHitTestVisible="False" Visibility="Collapsed">
+      <Path x:Name="SpotlightPath" Fill="#B9000000" />
+    </Canvas>
+  </Grid>
+</Window>

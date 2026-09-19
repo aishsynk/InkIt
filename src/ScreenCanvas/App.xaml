@@ -1,0 +1,132 @@
+<Application x:Class="ScreenCanvas.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="UI/Icons/FluentIconResources.xaml"/></ResourceDictionary.MergedDictionaries>
+    <sys:Double x:Key="Palette.MainWidth" xmlns:sys="clr-namespace:System;assembly=System.Runtime">30</sys:Double>
+    <sys:Double x:Key="Toolbar.Button" xmlns:sys="clr-namespace:System;assembly=System.Runtime">23</sys:Double>
+    <sys:Double x:Key="Toolbar.Icon" xmlns:sys="clr-namespace:System;assembly=System.Runtime">14</sys:Double>
+    <sys:Double x:Key="Slider.Thumb" xmlns:sys="clr-namespace:System;assembly=System.Runtime">12</sys:Double>
+    <sys:Double x:Key="Slider.Track" xmlns:sys="clr-namespace:System;assembly=System.Runtime">2</sys:Double>
+    <LinearGradientBrush x:Key="GlassSpecularBrush" StartPoint="0,0" EndPoint="0,1">
+      <GradientStop Color="#10000000" Offset="0.0"/>
+      <GradientStop Color="#00000000" Offset="1.0"/>
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="PanelBrush" Color="#F7FBFBFC" />
+    <SolidColorBrush x:Key="Level2Brush" Color="#FAFFFFFF" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#FF007AFF" />
+    <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FF1D1D1F" />
+    <SolidColorBrush x:Key="SecondaryTextBrush" Color="#FF86868B" />
+    <SolidColorBrush x:Key="MutedTextBrush" Color="#FFB0B0B5" />
+    <SolidColorBrush x:Key="HoverBrush" Color="#0B000000" />
+    <SolidColorBrush x:Key="PressedBrush" Color="#14000000" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#0D000000" />
+    <SolidColorBrush x:Key="SeparatorBrush" Color="#12000000" />
+    <SolidColorBrush x:Key="DragHandleBrush" Color="#FFC7C7CC" />
+    <SolidColorBrush x:Key="TrackBrush" Color="#FFE5E5EA" />
+    <SolidColorBrush x:Key="ThumbBrush" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="SelectedBrush" Color="#E8F2FF" />
+    <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="Segoe UI Variable Text"/><Setter Property="TextOptions.TextFormattingMode" Value="Display"/></Style>
+    <Style TargetType="Button">
+      <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,1" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Surface" Background="{TemplateBinding Background}" CornerRadius="7" SnapsToDevicePixels="True">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" SnapsToDevicePixels="True" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource HoverBrush}" />
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Surface" Property="Background" Value="{DynamicResource PressedBrush}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <!-- Apple Ultra-Thin 4 DIP Floating Scrollbar -->
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="4"/>
+      <Setter Property="MinWidth" Value="4"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Grid Background="Transparent">
+              <Track x:Name="PART_Track" IsDirectionReversed="True">
+                <Track.DecreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="False" Height="0"/>
+                </Track.DecreaseRepeatButton>
+                <Track.IncreaseRepeatButton>
+                  <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="False" Height="0"/>
+                </Track.IncreaseRepeatButton>
+                <Track.Thumb>
+                  <Thumb Width="4">
+                    <Thumb.Template>
+                      <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="ThumbBorder" Background="#45FFFFFF" CornerRadius="2" Margin="0,2"/>
+                        <ControlTemplate.Triggers>
+                          <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="ThumbBorder" Property="Background" Value="#90FFFFFF"/>
+                          </Trigger>
+                        </ControlTemplate.Triggers>
+                      </ControlTemplate>
+                    </Thumb.Template>
+                  </Thumb>
+                </Track.Thumb>
+              </Track>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ScrollViewer">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollViewer">
+            <Grid Background="{TemplateBinding Background}">
+              <ScrollContentPresenter CanContentScroll="{TemplateBinding CanContentScroll}"/>
+              <ScrollBar x:Name="PART_VerticalScrollBar" HorizontalAlignment="Right" VerticalAlignment="Stretch" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" Value="{Binding VerticalOffset, Mode=OneWay, RelativeSource={RelativeSource TemplatedParent}}" ViewportSize="{TemplateBinding ViewportHeight}" Minimum="0" Maximum="{TemplateBinding ScrollableHeight}"/>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="ToolTip">
+      <Setter Property="HasDropShadow" Value="False"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="Foreground" Value="#FFF7F8FA"/>
+      <Setter Property="FontFamily" Value="Segoe UI Variable Text"/>
+      <Setter Property="FontSize" Value="11.5"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToolTip">
+            <Border Background="#EB181A20" BorderBrush="#30FFFFFF" BorderThickness="1" CornerRadius="6" Padding="8,4" SnapsToDevicePixels="True">
+              <Border.Effect>
+                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.35" Color="#000000" Direction="270" />
+              </Border.Effect>
+              <ContentPresenter Margin="0"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="Slider">
+      <Setter Property="Height" Value="22"/><Setter Property="Width" Value="200"/><Setter Property="HorizontalAlignment" Value="Left"/><Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+      <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Slider"><Grid Margin="3,0"><Track x:Name="PART_Track"><Track.DecreaseRepeatButton><RepeatButton Command="Slider.DecreaseLarge" Height="{StaticResource Slider.Track}" VerticalAlignment="Center" Background="{DynamicResource AccentBrush}" BorderThickness="0"/></Track.DecreaseRepeatButton><Track.Thumb><Thumb Width="{StaticResource Slider.Thumb}" Height="{StaticResource Slider.Thumb}"><Thumb.Template><ControlTemplate TargetType="Thumb"><Ellipse Fill="{DynamicResource ThumbBrush}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb><Track.IncreaseRepeatButton><RepeatButton Command="Slider.IncreaseLarge" Height="{StaticResource Slider.Track}" VerticalAlignment="Center" Background="{DynamicResource TrackBrush}" BorderThickness="0"/></Track.IncreaseRepeatButton></Track></Grid></ControlTemplate></Setter.Value></Setter>
+    </Style>
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>
