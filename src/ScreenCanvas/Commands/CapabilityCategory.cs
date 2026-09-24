@@ -8,6 +8,5 @@ public enum CapabilityCategory
     Screen,
     Privacy,
     Board,
-    Record,
     Tools
 }

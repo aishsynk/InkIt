@@ -27,7 +27,7 @@ public static class PositioningHelper
         window.Left = Math.Clamp(window.Left, left - window.ActualWidth + visiblePadding, right - visiblePadding);
         window.Top = Math.Clamp(window.Top, top, bottom - visiblePadding);
         
-        const double snap = 12;
+        const double snap = 24;
         if (Math.Abs(window.Left - left) < snap) window.Left = left;
         if (Math.Abs(window.Left + window.ActualWidth - right) < snap) window.Left = right - window.ActualWidth;
         if (Math.Abs(window.Top - top) < snap) window.Top = top;

@@ -32,7 +32,6 @@ public partial class OverlayWindow : Window
     private Path? _shapePreview;
     private readonly System.Windows.Media.DrawingVisual _activeStrokeVisual = new();
     private readonly System.Windows.Media.DrawingVisual _activeShapeVisual = new();
-    private readonly System.Windows.Media.DrawingVisual _activeBlurVisual = new();
     private Ellipse? _laserDot;
     private readonly DispatcherTimer _fadeTimer;
     private readonly Dictionary<object, (DateTimeOffset Start, TimeSpan Duration, double OriginalOpacity, byte OriginalAlpha)> _expirations = [];
@@ -403,20 +402,6 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
             BeginText(point);
             e.Handled = true;
         }
-        {
-            {
-                Stroke = new SolidColorBrush(Color.FromArgb(120, 255, 255, 255)),
-                StrokeThickness = 1.5,
-                StrokeDashArray = new DoubleCollection([4, 3]),
-                Fill = new SolidColorBrush(Color.FromArgb(30, 100, 100, 100)),
-                IsHitTestVisible = false
-            };
-            InputRoot.CaptureMouse();
-            e.Handled = true;
-        }
-        {
-            e.Handled = true;
-        }
     }
 
     private void InputRoot_OnMouseMove(object sender, MouseEventArgs e)
@@ -446,11 +431,6 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
                 Canvas.SetTop(_laserDot, point.Y - _laserDot.Height / 2);
             }
         }
-        {
-            var rect = new Rect(blurAnchor, point);
-            e.Handled = true;
-            return;
-        }
         if (_dragAnchor is not Point anchor || _shapePreview is null || e.LeftButton != MouseButtonState.Pressed) return;
         UpdateShape(_shapePreview, anchor, point, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift), Keyboard.Modifiers.HasFlag(ModifierKeys.Alt));
         e.Handled = true;
@@ -458,17 +438,6 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
 
     private void InputRoot_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        {
-            var blurEnd = e.GetPosition(InputRoot);
-            var rect = new Rect(blurAnchor, blurEnd);
-            if (Mouse.Captured == InputRoot) InputRoot.ReleaseMouseCapture();
-            if (rect.Width >= 4 && rect.Height >= 4)
-            {
-                CommitPixelatedRegion(rect);
-            }
-            e.Handled = true;
-            return;
-        }
         _erasedThisDrag.Clear();
         if (_settings.Tool==ToolKind.Select && _selectedElement is not null && _selectionAnchor is not null)
         {
@@ -491,8 +460,7 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
         _history.Add(completed);
         ScheduleFade(completed);
         _removed.Clear();
-        if (_settings.Shape == ShapeKind.Callout) BeginText(new Point(Math.Min(anchor.X, end.X) + 12, Math.Min(anchor.Y, end.Y) + 10));
-        else if (!_settings.StickyTools) _manager?.DeactivateCurrentTool(ToolDeactivationReason.CursorSelected);
+        if (!_settings.StickyTools) _manager?.DeactivateCurrentTool(ToolDeactivationReason.CursorSelected);
         e.Handled = true;
     }
 
@@ -517,14 +485,14 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
 
     private void UpdateShape(Path path, Point start, Point end, bool constrain, bool fromCenter)
     {
-        if (constrain && _settings.Shape is ShapeKind.Line or ShapeKind.Arrow or ShapeKind.DoubleArrow or ShapeKind.CurvedArrow or ShapeKind.Connector or ShapeKind.ConnectorArrow)
+        if (constrain && _settings.Shape is ShapeKind.Line or ShapeKind.Arrow or ShapeKind.DoubleArrow)
         {
             var distance = (end - start).Length;
             var angle = Math.Atan2(end.Y - start.Y, end.X - start.X);
             angle = Math.Round(angle / (Math.PI / 4)) * (Math.PI / 4);
             end = new Point(start.X + Math.Cos(angle) * distance, start.Y + Math.Sin(angle) * distance);
         }
-        if (constrain && _settings.Shape is ShapeKind.Rectangle or ShapeKind.RoundedRectangle or ShapeKind.Square or ShapeKind.Ellipse or ShapeKind.Circle or ShapeKind.Process or ShapeKind.Terminator)
+        if (constrain && _settings.Shape is ShapeKind.Rectangle or ShapeKind.RoundedRectangle or ShapeKind.Ellipse)
         {
             var side = Math.Max(Math.Abs(end.X - start.X), Math.Abs(end.Y - start.Y));
             end = new Point(start.X + Math.Sign(end.X-start.X) * side, start.Y + Math.Sign(end.Y-start.Y) * side);
@@ -540,28 +508,10 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
             ShapeKind.Line => new LineGeometry(start, end),
             ShapeKind.Arrow => ArrowGeometry(start, end, false, _settings.Thickness),
             ShapeKind.DoubleArrow => ArrowGeometry(start, end, true, _settings.Thickness),
-            ShapeKind.CurvedArrow => CurvedArrowGeometry(start, end, _settings.Thickness),
-            ShapeKind.ElbowArrow => ElbowGeometry(start, end, true, _settings.Thickness),
-            ShapeKind.Connector => ElbowGeometry(start, end, false, _settings.Thickness),
-            ShapeKind.ConnectorArrow => ElbowGeometry(start, end, true, _settings.Thickness),
             ShapeKind.Rectangle => new RectangleGeometry(rect),
             ShapeKind.RoundedRectangle => new RectangleGeometry(rect, 14, 14),
-            ShapeKind.Square => new RectangleGeometry(rect),
-            ShapeKind.Ellipse or ShapeKind.Circle => new EllipseGeometry(rect),
-            ShapeKind.Triangle => PolygonGeometry([new Point(rect.Left + rect.Width / 2, rect.Top), rect.BottomRight, rect.BottomLeft]),
+            ShapeKind.Ellipse => new EllipseGeometry(rect),
             ShapeKind.Diamond => PolygonGeometry([new Point(rect.Left + rect.Width / 2, rect.Top), new Point(rect.Right, rect.Top + rect.Height / 2), new Point(rect.Left + rect.Width / 2, rect.Bottom), new Point(rect.Left, rect.Top + rect.Height / 2)]),
-            ShapeKind.Hexagon => PolygonGeometry([new Point(rect.Left+rect.Width*.25,rect.Top),new Point(rect.Left+rect.Width*.75,rect.Top),new Point(rect.Right,rect.Top+rect.Height*.5),new Point(rect.Left+rect.Width*.75,rect.Bottom),new Point(rect.Left+rect.Width*.25,rect.Bottom),new Point(rect.Left,rect.Top+rect.Height*.5)]),
-            ShapeKind.Parallelogram => PolygonGeometry([new Point(rect.Left+rect.Width*.2,rect.Top),rect.TopRight,new Point(rect.Right-rect.Width*.2,rect.Bottom),rect.BottomLeft]),
-            ShapeKind.Process => new RectangleGeometry(rect),
-            ShapeKind.Terminator => new RectangleGeometry(rect, rect.Height/2, rect.Height/2),
-            ShapeKind.Database => DatabaseGeometry(rect),
-            ShapeKind.Cloud => CloudGeometry(rect),
-            ShapeKind.Callout => CalloutGeometry(rect),
-            ShapeKind.Check => CheckGeometry(rect),
-            ShapeKind.Cross => CrossGeometry(rect),
-            ShapeKind.Warning => WarningGeometry(rect),
-            ShapeKind.Question => QuestionGeometry(rect),
-            ShapeKind.Star => StarGeometry(rect),
             _ => new RectangleGeometry(rect)
         };
     }
@@ -854,65 +804,6 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
         if (Mouse.Captured == InputRoot) InputRoot.ReleaseMouseCapture();
     }
 
-    private void CancelBlurPreview()
-    {
-        if (Mouse.Captured == InputRoot) InputRoot.ReleaseMouseCapture();
-    }
-
-    private void CommitPixelatedRegion(Rect screenRect)
-    {
-        var left = (int)screenRect.X;
-        var top = (int)screenRect.Y;
-        var w = (int)screenRect.Width;
-        var h = (int)screenRect.Height;
-        if (w <= 0 || h <= 0) return;
-
-        var bounds = new System.Drawing.Rectangle(left, top, w, h);
-        using var captured = new System.Drawing.Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
-        using (var g = System.Drawing.Graphics.FromImage(captured))
-        {
-            g.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, bounds.Size, System.Drawing.CopyPixelOperation.SourceCopy);
-        }
-
-        var smallW = Math.Max(1, w / _settings.BlurPixelationLevel);
-        var smallH = Math.Max(1, h / _settings.BlurPixelationLevel);
-        var smallBmp = new RenderTargetBitmap(smallW, smallH, 96, 96, PixelFormats.Pbgra32);
-
-        var dv = new DrawingVisual();
-        using (var ctx = dv.RenderOpen())
-        {
-            var bs = Imaging.CreateBitmapSourceFromHBitmap(
-                captured.GetHbitmap(), nint.Zero, Int32Rect.Empty,
-                BitmapSizeOptions.FromEmptyOptions());
-            ctx.DrawImage(bs, new Rect(0, 0, smallW, smallH));
-        }
-        smallBmp.Render(dv);
-
-        var scaled = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
-        var dv2 = new DrawingVisual();
-        using (var ctx = dv2.RenderOpen())
-        {
-            ctx.DrawImage(smallBmp, new Rect(0, 0, w, h));
-        }
-        scaled.Render(dv2);
-
-        scaled.Freeze();
-        var img = new System.Windows.Controls.Image
-        {
-            Source = scaled,
-            Width = w,
-            Height = h,
-            IsHitTestVisible = false
-        };
-        img.SetValue(RenderOptions.BitmapScalingModeProperty, BitmapScalingMode.NearestNeighbor);
-        Canvas.SetLeft(img, left);
-        Canvas.SetTop(img, top);
-        ShapeSurface.Children.Add(img);
-        _history.Add(img);
-        _removed.Clear();
-        ScheduleFade(img);
-    }
-
     private Point GetScaledPoint(Point point)
     {
         if (_manager == null) return point;
@@ -927,31 +818,10 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
         return point; 
     }
 
-    {
-        try
-        {
-            var x = (int)screenPoint.X;
-            var y = (int)screenPoint.Y;
-            using var bmp = new System.Drawing.Bitmap(1, 1, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
-            using var g = System.Drawing.Graphics.FromImage(bmp);
-            g.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(1, 1), System.Drawing.CopyPixelOperation.SourceCopy);
-            var pixel = bmp.GetPixel(0, 0);
-            var pickedColor = Color.FromArgb(pixel.A, pixel.R, pixel.G, pixel.B);
-            _settings.Color = pickedColor;
-            _manager?.SetColor(pickedColor);
-                _manager?.DeactivateCurrentTool(ToolDeactivationReason.CursorSelected);
-        }
-        catch
-        {
-            _manager?.DeactivateCurrentTool(ToolDeactivationReason.Escape);
-        }
-    }
-
     public void CancelActiveInteraction()
     {
         CancelMouseStroke();
         CancelShapePreview();
-        CancelBlurPreview();
         CancelTextEditor();
         _erasedThisDrag.Clear();
         if (_laserDot is not null) { ShapeSurface.Children.Remove(_laserDot); _laserDot=null; }

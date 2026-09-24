@@ -28,11 +28,8 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
     public OverlayManager(AppSettings settings, ISettingsStore store)
     {
         _profiles = new ToolProfileStore(settings, store);
-        Settings.BlurRadius = settings.Blur.Radius;
-        Settings.BlurPixelationLevel = settings.Blur.PixelationLevel;
         Settings.SpotlightRadius = settings.Spotlight.Radius;
         Settings.SpotlightOverlayOpacity = settings.Spotlight.OverlayOpacity;
-        Settings.EyedropperAutoSwitchBack = settings.Eyedropper.AutoSwitchBack;
         _monitorTimer = new DispatcherTimer(DispatcherPriority.Input)
         {
             Interval = TimeSpan.FromMilliseconds(75)

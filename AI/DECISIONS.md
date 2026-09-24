@@ -12,8 +12,9 @@
 
 ## 2026-09-03 — Production packaging
 
-- Decision: publish a framework-dependent win-x64 package only after the Release build and runtime validation pass.
+- Decision: publish a win-x64 package only after the Release build and runtime validation pass.
 - Rationale: production must receive the same validated package produced by the staged workflow.
+- Superseded (2026-09-24): this entry originally said "framework-dependent". The actual and intended mode is self-contained. See "Self-contained publish mode" below.
 
 ## 2026-09-03 — Performance gate
 
@@ -85,3 +86,19 @@
   5. ToolTip Non-Client Artifact Elimination: Set `HasDropShadow="False"` and `Background="Transparent"` on WPF ToolTips to eliminate rectangular gray corner non-client popup artifacts.
 - Rationale: Fully satisfies the presenter requirement for uninterrupted live teaching workflows and unified aesthetic cohesion across the application.
 
+
+## 2026-09-19 — Feature reduction: remove Eyedropper, Blur/Pixelate, Recording and niche diagram shapes
+
+- Decision: remove the Eyedropper, Blur/Pixelate privacy tool, and GIF screen recording, plus 18 diagram-oriented `ShapeKind`s (Database, Cloud, Callout, Connector, Star, Check/Cross, Triangle, Hexagon, etc.). The Shapes palette keeps Line, Arrow, Double Arrow, Rectangle, Rounded Rectangle, Ellipse and Step Marker.
+- Rationale: InkIt is a lightweight presenter annotation tool. These features added UI weight, dead code paths and maintenance cost without fitting the core teaching workflow. (Recorded retroactively on 2026-09-24. The removal itself happened 2026-09-19.)
+- Impact: the 2026-09-24 stabilization removed the remaining traces: the dead `record.screen` command and the `Record` Capability Centre category, the Blur/Eyedropper settings sections, and a stale "connector" preset reference.
+
+## 2026-09-24 — Self-contained publish mode
+
+- Decision: production packages are published **self-contained** for win-x64 (`dotnet publish ... -r win-x64 --self-contained true -o artifacts/publish/win-x64`), and the Inno Setup installer packages that folder.
+- Rationale: users must not need a .NET 8 runtime installed. This matches the actual publish output and the installer script. It replaces the stale "framework-dependent" wording in the 2026-09-03 packaging entry.
+
+## 2026-09-24 — Esc is single-press tool termination, even with a palette open
+
+- Decision: the global Esc hotkey always calls `EndCurrentTool`, which closes the palette and returns to Cursor with click-through. The earlier "first Esc closes the palette only" branch in `App.xaml.cs` was removed.
+- Rationale: that branch contradicted the 2026-09-03 "Global Esc invariant" and made Esc from Shapes/Laser (whose palettes open on selection) need two presses. Palettes can still be dismissed without ending the tool via ✕ or by clicking the tool button again.

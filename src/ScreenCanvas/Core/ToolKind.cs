@@ -11,7 +11,5 @@ public enum ToolKind
     Text,
     NumberMarker,
     Laser,
-    Spotlight,
-    BlurPixelate,
-    Eyedropper
+    Spotlight
 }

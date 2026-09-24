@@ -29,7 +29,6 @@ public partial class InspectorWindow : Window
     private readonly ToolbarWindow _owner;
     private string? _currentCategory;
     private Button? _anchorButton;
-    private bool _showMoreShapes;
 
     public string? CurrentCategory => _currentCategory;
 
@@ -61,8 +60,19 @@ public partial class InspectorWindow : Window
 
         RebuildContent();
         Reposition();
+        
+        Opacity = 0;
         Show();
         Reposition();
+        
+        var anim = new System.Windows.Media.Animation.DoubleAnimation
+        {
+            From = 0.0,
+            To = 1.0,
+            Duration = TimeSpan.FromMilliseconds(120),
+            EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut }
+        };
+        BeginAnimation(OpacityProperty, anim);
     }
 
     public void CloseInspector()
@@ -125,7 +135,7 @@ public partial class InspectorWindow : Window
                 // Toolbar is vertical ("up to down"):
                 // Sub-menu MUST be directly adjacent (right or left) to the toolbar,
                 // and MUST have EXACT same Top and Height as the main toolbar (MANDATORY)!
-                double desiredWidth = (_currentCategory == "shapes") ? 52 : 32;
+                double desiredWidth = 32;
                 Width = desiredWidth;
                 InspectorChrome.Width = desiredWidth;
 
@@ -181,6 +191,8 @@ public partial class InspectorWindow : Window
         bool isHoriz = _owner.IsHorizontal;
         ContentHost.Orientation = isHoriz ? Orientation.Horizontal : Orientation.Vertical;
         InspectorChrome.Padding = isHoriz ? new Thickness(4, 3, 4, 3) : new Thickness(3, 3, 3, 3);
+        InspectorChrome.Width = isHoriz ? double.NaN : 32;
+        InspectorChrome.Height = isHoriz ? 32 : double.NaN;
 
         if (isHoriz)
         {
@@ -245,6 +257,12 @@ public partial class InspectorWindow : Window
         ContentHost.Children.Add(InspectorUIHelper.CreateComponentBar(_owner, _overlay, nibs.Select(n => (n.icon, n.label, (Action)(() => { _overlay.SetPenMode(n.mode); RebuildContent(); Reposition(); }), _overlay.Settings.PenMode == n.mode)).ToArray(), isHoriz));
         ContentHost.Children.Add(CreateDivider());
         ContentHost.Children.Add(InspectorUIHelper.CreateStrokeSelector(_owner, _overlay, new[] { (2.0, 2.5, "Fine"), (4.5, 4.5, "Medium"), (8.0, 7.5, "Bold"), (14.0, 11.0, "Heavy") }, isHoriz));
+        ContentHost.Children.Add(CreateDivider());
+        ContentHost.Children.Add(CreateColorPaletteRow(() =>
+        {
+            RebuildContent();
+            _owner.UpdateColorChip();
+        }));
         ContentHost.Children.Add(CreateCloseButton(CloseInspector));
     }
 
@@ -260,6 +278,12 @@ public partial class InspectorWindow : Window
         ContentHost.Children.Add(InspectorUIHelper.CreateComponentBar(_owner, _overlay, modes.Select(m => (m.icon, m.label, (Action)(() => { _overlay.SetPenMode(m.mode); RebuildContent(); Reposition(); }), _overlay.Settings.PenMode == m.mode)).ToArray(), isHoriz));
         ContentHost.Children.Add(CreateDivider());
         ContentHost.Children.Add(InspectorUIHelper.CreateStrokeSelector(_owner, _overlay, new[] { (6.0, 2.5, "Fine"), (12.0, 4.5, "Std"), (20.0, 7.0, "Hdg"), (30.0, 10.0, "Brd") }, isHoriz));
+        ContentHost.Children.Add(CreateDivider());
+        ContentHost.Children.Add(CreateColorPaletteRow(() =>
+        {
+            RebuildContent();
+            _owner.UpdateColorChip();
+        }, isHighlighter: true));
         ContentHost.Children.Add(CreateCloseButton(CloseInspector));
     }
 
@@ -273,98 +297,25 @@ public partial class InspectorWindow : Window
             ("Fluent.DoubleArrow.Regular", "Double Arrow", ShapeKind.DoubleArrow),
             ("Fluent.Rectangle.Regular", "Rectangle (R)", ShapeKind.Rectangle),
             ("Fluent.RoundRect.Regular", "Rounded Rect", ShapeKind.RoundedRectangle),
-            ("Fluent.Circle.Regular", "Ellipse (O)", ShapeKind.Ellipse),
-            ("Fluent.Rhombus.Regular", "Diamond / Decision", ShapeKind.Diamond)
-        };
+            ("Fluent.Circle.Regular", "Ellipse (O)", ShapeKind.Ellipse)};
 
-        Panel shapePanel = isHoriz
-            ? new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 0) }
-            : new UniformGrid { Columns = 2, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 4) };
-
-        foreach (var (icon, label, kind) in coreShapes)
+        var shapeItems = coreShapes.Select(s => (s.icon, s.label, (Action)(() =>
         {
-            var isSel = _overlay.Settings.Tool == ToolKind.Shape && _overlay.Settings.Shape == kind;
-            shapePanel.Children.Add(CreateShapeButton(icon, label, isSel, () =>
-            {
-                _overlay.SetTool(ToolKind.Shape);
-                _overlay.SetShape(kind);
-                RebuildContent();
-                Reposition();
-            }));
-        }
-        ContentHost.Children.Add(shapePanel);
+            _overlay.SetTool(ToolKind.Shape);
+            _overlay.SetShape(s.kind);
+            RebuildContent();
+            Reposition();
+        }), _overlay.Settings.Tool == ToolKind.Shape && _overlay.Settings.Shape == s.kind)).ToList();
 
-        ContentHost.Children.Add(CreateDivider());
-
-        var techSymbols = new (string icon, string label, ShapeKind kind)[]
-        {
-            ("Fluent.Database.Regular", "Database / SQL / Fabric", ShapeKind.Database),
-            ("Fluent.Cloud.Regular", "Azure / Cloud Architecture", ShapeKind.Cloud),
-            ("Fluent.Star.Regular", "Key Point / Star", ShapeKind.Star),
-            ("Fluent.Checkmark.Regular", "Best Practice (✓)", ShapeKind.Check),
-            ("Fluent.Dismiss.Regular", "Anti-Pattern (✕)", ShapeKind.Cross)
-        };
-
-        Panel techPanel = isHoriz
-            ? new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 0) }
-            : new UniformGrid { Columns = 2, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 4) };
-
-        foreach (var (icon, label, kind) in techSymbols)
-        {
-            var isSel = _overlay.Settings.Tool == ToolKind.Shape && _overlay.Settings.Shape == kind;
-            techPanel.Children.Add(CreateShapeButton(icon, label, isSel, () =>
-            {
-                _overlay.SetTool(ToolKind.Shape);
-                _overlay.SetShape(kind);
-                RebuildContent();
-                Reposition();
-            }));
-        }
-
-        var isStepActive = _overlay.Settings.Tool == ToolKind.NumberMarker;
-        techPanel.Children.Add(CreateShapeButton("Fluent.TextNumberFormat.Regular", $"Step Marker (#{_overlay.Settings.MarkerNumber})", isStepActive, () =>
+        shapeItems.Add(("Fluent.TextNumberFormat.Regular", $"Step Marker (#{_overlay.Settings.MarkerNumber})", () =>
         {
             _overlay.SetTool(ToolKind.NumberMarker);
             RebuildContent();
             Reposition();
-        }));
+        }, _overlay.Settings.Tool == ToolKind.NumberMarker));
 
-        techPanel.Children.Add(CreateShapeButton("Fluent.Shapes.Regular", "More Diagram Symbols...", _showMoreShapes, () =>
-        {
-            _showMoreShapes = !_showMoreShapes;
-            RebuildContent();
-            Reposition();
-        }));
+        ContentHost.Children.Add(InspectorUIHelper.CreateComponentBar(_owner, _overlay, shapeItems.ToArray(), isHoriz));
 
-        ContentHost.Children.Add(techPanel);
-
-        if (_showMoreShapes)
-        {
-            ContentHost.Children.Add(CreateDivider());
-            Panel morePanel = isHoriz
-                ? new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 0) }
-                : new UniformGrid { Columns = 2, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 4) };
-
-            var extraShapes = new (string icon, string label, ShapeKind kind)[]
-            {
-                ("Fluent.Comment.Regular", "Callout Note", ShapeKind.Callout),
-                ("Fluent.Warning.Regular", "Warning Triangle", ShapeKind.Warning),
-                ("Fluent.Connector.Regular", "Elbow Connector", ShapeKind.Connector),
-                ("Fluent.Triangle.Regular", "Triangle", ShapeKind.Triangle)
-            };
-            foreach (var (icon, label, kind) in extraShapes)
-            {
-                var isSel = _overlay.Settings.Tool == ToolKind.Shape && _overlay.Settings.Shape == kind;
-                morePanel.Children.Add(CreateShapeButton(icon, label, isSel, () =>
-                {
-                    _overlay.SetTool(ToolKind.Shape);
-                    _overlay.SetShape(kind);
-                    RebuildContent();
-                    Reposition();
-                }));
-            }
-            ContentHost.Children.Add(morePanel);
-        }
 
         ContentHost.Children.Add(CreateDivider());
 
@@ -372,7 +323,7 @@ public partial class InspectorWindow : Window
         {
             RebuildContent();
             _owner.UpdateColorChip();
-        }, forceTwoColumns: !isHoriz));
+        }));
 
         ContentHost.Children.Add(CreateDivider());
 
@@ -383,21 +334,7 @@ public partial class InspectorWindow : Window
             (8.0, 7.5, "Bold (8 px)"),
             (14.0, 11.0, "Heavy (14 px)")
         };
-        Panel strokePanel = isHoriz
-            ? new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 4, 0) }
-            : new UniformGrid { Columns = 2, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 4) };
-
-        foreach (var (w, dot, tip) in strokes)
-        {
-            var isSel = Math.Abs(_overlay.Settings.Thickness - w) < 1.0;
-            strokePanel.Children.Add(CreateStrokeDot(dot, w, isSel, tip, () =>
-            {
-                _overlay.SetThickness(w);
-                RebuildContent();
-                Reposition();
-            }));
-        }
-        ContentHost.Children.Add(strokePanel);
+        ContentHost.Children.Add(InspectorUIHelper.CreateStrokeSelector(_owner, _overlay, strokes, isHoriz));
 
         ContentHost.Children.Add(CreateCloseButton(CloseInspector));
     }
@@ -438,7 +375,7 @@ public partial class InspectorWindow : Window
         var sizes = new double[] { 16, 22, 30, 42 };
         Panel sizePanel = isHoriz
             ? new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 6, 0) }
-            : new UniformGrid { Columns = 2, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 4) };
+            : new StackPanel { Orientation = Orientation.Vertical, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 4) };
 
         foreach (var s in sizes)
         {
@@ -807,7 +744,16 @@ public partial class InspectorWindow : Window
             border.BorderBrush = (MediaBrush)FindResource("AccentBrush");
         }
 
-        var geom = TryFindResource(iconKey) as Geometry ?? (Geometry)FindResource("Fluent.Shapes.Regular");
+        Geometry? geom = null;
+        try
+        {
+            geom = TryFindResource(iconKey) as Geometry ?? (Geometry)FindResource("Fluent.Shapes.Regular");
+        }
+        catch
+        {
+            geom = (Geometry)FindResource("Fluent.Shapes.Regular");
+        }
+        
         var path = new Path
         {
             Data = geom,

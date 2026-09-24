@@ -11,9 +11,7 @@ public sealed class AppSettings
     public ToolbarSettings Toolbar { get; set; } = new();
     public HotkeyConfiguration Hotkeys { get; set; } = new();
     public AdvancedSettings Advanced { get; set; } = new();
-    public BlurSettings Blur { get; set; } = new();
     public SpotlightSettings Spotlight { get; set; } = new();
-    public EyedropperSettings Eyedropper { get; set; } = new();
     public Dictionary<string, ToolProfile> ToolProfiles { get; set; } = [];
 }
 
@@ -32,6 +30,4 @@ public sealed class AppearanceSettings { public AppTheme Theme { get; set; } = A
 public sealed class ToolbarSettings { public bool AutoCollapse { get; set; } public bool ShowTooltips { get; set; } = true; public double Opacity { get; set; } = 1; public double? FloatingX { get; set; } public double? FloatingY { get; set; } public bool Horizontal { get; set; } }
 public sealed class AdvancedSettings { public bool HardwareAcceleration { get; set; } = true; public int HistoryLimit { get; set; } = 100; public bool DiagnosticLogging { get; set; } }
 
-public sealed class BlurSettings { public double Radius { get; set; } = 10; public int PixelationLevel { get; set; } = 10; }
 public sealed class SpotlightSettings { public double Radius { get; set; } = 110; public double OverlayOpacity { get; set; } = 0.5; }
-public sealed class EyedropperSettings { public bool AutoSwitchBack { get; set; } = true; }

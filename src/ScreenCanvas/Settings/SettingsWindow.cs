@@ -78,8 +78,6 @@ public sealed class SettingsWindow : Window
 
     private static readonly Dictionary<(string Type, string Property), (double Min, double Max, double Tick)> NumericRanges = new()
     {
-        [("BlurSettings", "Radius")] = (5, 50, 1),
-        [("BlurSettings", "PixelationLevel")] = (2, 20, 1),
         [("SpotlightSettings", "Radius")] = (50, 300, 1),
         [("SpotlightSettings", "OverlayOpacity")] = (0.1, 0.9, 0.05),
         [("AppearanceSettings", "UiScale")] = (0.5, 2, 0.05),

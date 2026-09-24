@@ -42,11 +42,9 @@ public sealed class ToolProfileStore
         Default(ToolKind.Highlighter, PenMode.StraightHighlighter, null, new(ToolSettings.TeachingAmber, 18, 115, false, null, false, 40));
         Default(ToolKind.Shape, null, ShapeKind.Arrow, new(ToolSettings.TeachingRed, 6, 255, false, null, false, 40));
         Default(ToolKind.Shape, null, ShapeKind.DoubleArrow, new(ToolSettings.TeachingRed, 6, 255, false, null, false, 40));
-        Default(ToolKind.Shape, null, ShapeKind.CurvedArrow, new(ToolSettings.TeachingRed, 6, 255, false, null, false, 40));
         Default(ToolKind.Shape, null, ShapeKind.Line, new(ToolSettings.TeachingRed, 4, 255, false, null, false, 40));
         Default(ToolKind.Shape, null, ShapeKind.Rectangle, new(ToolSettings.TeachingBlue, 4, 255, false, null, false, 40));
-        Default(ToolKind.Shape, null, ShapeKind.Circle, new(ToolSettings.TeachingBlue, 4, 255, false, null, false, 40));
-        Default(ToolKind.Shape, null, ShapeKind.Triangle, new(ToolSettings.TeachingBlue, 4, 255, false, null, false, 40));
+        Default(ToolKind.Shape, null, ShapeKind.Ellipse, new(ToolSettings.TeachingBlue, 4, 255, false, null, false, 40));
         Default(ToolKind.Laser, null, null, new(ToolSettings.TeachingRed, 8, 255, false, null, false, 40));
         Default(ToolKind.Text, null, null, new(ToolSettings.TeachingBlue, 4, 255, false, null, false, 40));
     }

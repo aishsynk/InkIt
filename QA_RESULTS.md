@@ -207,3 +207,38 @@ The Windows automation run was stopped with the physical Escape key before drawi
 - Executable Test Run: `artifacts/publish/win-x64/InkIt.exe` launched cleanly, identified process `InkIt.exe`, consumed 59.1 MB memory at launch, and terminated cleanly.
 
 
+
+## Stabilization pass — 2026-09-24 (Claude Opus 5.5)
+
+Method: real runtime input driven from PowerShell. UI Automation located toolbar buttons, `SetCursorPos`/`mouse_event`/`keybd_event` sent input, and GDI screenshots plus pixel sampling verified the results. Overlay click-through was checked from its `WS_EX_TRANSPARENT` extended style. Live Zoom was checked via `MagGetFullscreenTransform`. Tested on a 1920×1080 display at 100% scale. Release build first, then the published self-contained exe.
+
+| Area | Result |
+| --- | --- |
+| Toolbar launch / drag-move / position persists across restart | PASS |
+| Toolbar and palette stay above the overlay (ink drawn across the toolbar renders underneath) | PASS |
+| Palette open / close / toggle, no stuck palette | PASS (after fixing Present, see below) |
+| Direct switching Pen → Arrow → Highlighter → Laser → Pen, one click each, no Esc | PASS |
+| Sticky Pen (3 strokes), sticky Arrow (3 arrows), sticky Rectangle (2), sticky Text (2 entries) | PASS |
+| Hover and click on toolbar while Pen is active | PASS |
+| Single Esc → Cursor + click-through from Pen, Arrow, Laser, Highlighter | PASS (after fix, see below) |
+| Undo / Redo / Clear / Undo-after-Clear (pixel-verified); palette stays open | PASS |
+| Shapes Line, Arrow, Rectangle, Ellipse: live preview, reversed drag direction, size | PASS |
+| Text: click → type → commit, then a second text box without reselecting | PASS |
+| Spotlight, Live Zoom (2.0× → Esc → 1.0×), Screenshot region selector (Esc cancels), Whiteboard (Esc exits) | PASS |
+| Capability Centre (7 categories, 46 commands), Command Palette, Settings sections | PASS: no Record/Blur/Eyedropper/diagram-shape entries |
+| More → Exit clean shutdown (Release and published exe) | PASS |
+| Published exe: startup, Pen, direct switch to Arrow, Esc, clean exit | PASS |
+
+Defects found and fixed in this pass:
+- Present palette never appeared. `Present_Click` executed the `present` command, which re-invoked `Present_Click` through `onInspectCategory` and toggled the just-opened palette shut. The handler now sets Laser directly.
+- Esc with a palette open (always the case for Shapes and Laser) only closed the palette, so a second Esc was needed. The global Esc now always ends the tool (per the Global Esc invariant).
+- Drawing a Line opened a text editor. A failed automated replacement had changed `ShapeKind.Callout` to `ShapeKind.Line`. Removed.
+- Line default width silently changed 4 → 6 because of duplicate `ToolProfileStore` defaults left by the same replacement. Removed the duplicates.
+- Dead remnants of removed features: the `record.screen` command (did nothing when run) and the empty `Record` Capability Centre category, the Blur settings section, blur/eyedropper overlay code, a "connector" preset id. Removed.
+- CS0169 warning: unused `InspectorWindow._showMoreShapes`. Removed.
+
+Performance (published self-contained exe, 12 logical cores):
+- Clean startup, 20 s settle, 10 s sample: **216.1 MB working set, 140.9 MB private, 0.00% idle CPU**.
+- After a drawing session (overlay and palettes created): 315.6 MB working set, 227.1 MB private, 0.00% idle CPU.
+
+Build: `dotnet build ScreenCanvas.slnx -c Release --no-incremental` → 0 errors, 0 warnings.

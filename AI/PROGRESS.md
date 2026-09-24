@@ -2,12 +2,12 @@
 
 ## Current state
 
-- Last model used: mimo-v2.5-free (opencode)
-- Last tool/agent used: general subagent (parallel task execution) + direct file writes
-- Last update: 2026-09-05 12:30:00 +05:30
-- Project state: Full trainer audit completed. Phases 1-4 of remediation done. Recording backend implemented (GIF encoding via software LZW encoder, GDI screen capture). 0 errors, 0 warnings, self-contained win-x64 build verified. 60 commands, 13 tool kinds.
-- Work in progress: None — Phases 1-4 complete
-- Pending actions: Media Foundation MP4 encoding (future enhancement). Distribute validated installer when Inno Setup 6 is available.
+- Last model used: Claude Opus 5.5 (claude-opus-5-5)
+- Last tool/agent used: Claude Code desktop (Bash/PowerShell, dotnet, PowerShell UI Automation input driving); no subagent
+- Last update: 2026-09-24
+- Project state: Stabilized and checkpointed on branch `stabilize-current-ui`. Release build: 0 errors, 0 warnings. Runtime QA PASS on the Release build and the published self-contained exe (see QA_RESULTS.md, 2026-09-24).
+- Work in progress: None.
+- Pending actions: Rebuild the installer from the new `artifacts/publish/win-x64` (ISCC). Merge `stabilize-current-ui` once reviewed. Optional follow-ups are in the latest handover.
 
 ## Completed work (Phase 1+2 — Trainer Audit Remediation — 2026-09-05)
 
@@ -715,3 +715,86 @@ Status update: Fixes verified.
 - Work completed: Submenu rendering defects fully resolved by fixing the IsLoaded race condition leak in ToolbarWindow.xaml.cs and correctly intercepting the Closing event in InspectorWindow.xaml.cs.
 - Current project state: The application builds successfully. Submenus now correctly reuse the single InspectorWindow instance without being orphaned or crashing the state.
 - Pending actions: Promote the validated build to testing/deployment environments.
+
+- **2026-09-19** (Antigravity): Fixed cascading build errors caused by corrupted method blocks and missing braces from failed regex replacements during the tool removal process. Removed remaining Eyedropper and BlurPixelate registries, click handlers, and ToolKind enum values. Build now succeeds cleanly. Remaining cleanup involves removing EyedropperSettings in AppSettings.cs and Record_Click handler in ToolbarWindow.xaml.cs (which is dead code but compiles).
+
+## Handover — 2026-09-19 20:16:00 +05:30
+
+- Model: Gemini 2.5 Pro (Antigravity)
+- Tools/agents: Native CLI tools; no subagent
+- Files modified: None (Built artifacts only)
+- Work completed: Completed the uild and release new directive. Published self-contained win-x64 binary and successfully compiled Windows setup installer using ISCC.
+- Current project state: Production package validated and ready for deployment.
+- Pending actions: Promote validated package to development and production environments per AGENTS.md.
+
+
+## Handover - 2026-09-19 20:34:37 +05:30
+
+- Model: Gemini 2.5 Pro (Antigravity)
+- Tools/agents: Native CLI tools; no subagent
+- Files modified: src/ScreenCanvas/UI/ToolbarWindow.xaml.cs, src/ScreenCanvas/UI/InspectorWindow.xaml.cs, src/ScreenCanvas/Settings/AppSettings.cs
+- Work completed: Fixed state synchronization bugs where InspectorWindow.Hide() did not clear _currentInspector in ToolbarWindow, causing subsequent clicks on the same tool button to be erroneously interpreted as 'close' commands instead of 'open', resulting in submenus appearing to fail to show up. Cleaned up remaining dead code for Eyedropper and Record.
+- Current project state: Stable build. UI menus behave correctly even after dismissals via ESC or Alt+F4.
+- Pending actions: Move on to analyzing 'worthless' sub-tools as requested by the user, such as obscure ShapeKinds.
+
+
+
+## Handover - 2026-09-19 20:46:36 +05:30
+
+- Model: Gemini 2.5 Pro (Antigravity)
+- Tools/agents: Native CLI tools
+- Files modified: src/ScreenCanvas/UI/ToolbarWindow.xaml.cs, src/ScreenCanvas/Core/ShapeKind.cs, src/ScreenCanvas/Overlay/OverlayWindow.xaml.cs, src/ScreenCanvas/Commands/CommandRegistry.cs, src/ScreenCanvas/Core/ToolProfileStore.cs, src/ScreenCanvas/UI/InspectorWindow.xaml.cs, src/ScreenCanvas/Overlay/OverlayManager.cs, src/ScreenCanvas/Core/ToolSettings.cs
+- Work completed: Fixed a UX issue where single-action toolbar buttons (Clear All, Undo, Redo) were forcibly closing the currently open submenu (e.g. Pen palette). Now they leave the palette open. Performed feature-reduction analysis and removed 19 highly niche diagramming/architecture shapes (Database, Cloud, Connector, Terminator, etc.) that did not fit a lightweight annotation application, simplifying the ShapeKind enum, geometry generation, and UI code.
+- Current project state: Stable build. UI is leaner, and tool usability is significantly improved.
+- Pending actions: Await further instructions or prepare for final build and packaging.
+
+  ## Defect Verification & Build Refresh - 2026-09-19
+  
+  - Model: Gemini 2.5 Pro (Antigravity)
+  - Tools/agents: Native CLI tools, dotnet build; no subagent
+  - Files modified: None (Re-validated InspectorWindow.xaml.cs syntax fix)
+  - Work completed: Force-killed ghost processes. Cleaned and published the complete win-x64 binary to the artifacts folder. Verified Shapes menu regression (caused by syntax error in previous automated replacement) is fully resolved.
+  - Current project state: Production package validated and ready for deployment in rtifacts/publish/win-x64/.
+  - Pending actions: Wait for user confirmation that the win64 binary behaves perfectly.
+
+## Handover — 2026-09-24
+
+- Model: Claude Opus 5.5 (claude-opus-5-5)
+- Tools/agents: Claude Code desktop (Bash, dotnet build); no subagent
+- Files modified: AI/PROGRESS.md. Refreshed the stale "Current state" header and added this entry.
+- Work completed: Read AGENTS.md and all AI/*.md files. Checked git state: 14 modified files, not committed. Ran a Release build: 0 errors, 1 warning (CS0169 `_showMoreShapes`).
+- Documentation drift found (not fixed yet):
+  - AI/CONTEXT.md describes the toolbar as "13 controls". The toolbar has changed since.
+  - AI/DECISIONS.md "Production packaging" says the package is framework-dependent, but CONTEXT.md and the actual publish are self-contained.
+- Current project state: Stable. Nothing has been committed yet.
+- Pending actions: The user needs to confirm runtime behaviour. Clean up the unused field. Commit the changes. Reconcile the CONTEXT/DECISIONS drift.
+
+## Stabilization pass — 2026-09-24
+
+- Model: Claude Opus 5.5 (claude-opus-5-5)
+- Tools/agents: Claude Code desktop. Bash/PowerShell, dotnet build/publish, PowerShell UI Automation + `SetCursorPos`/`mouse_event` runtime driving, GDI screenshots. No subagent.
+- Files modified:
+  - Code: `App.xaml.cs`, `UI/ToolbarWindow.xaml.cs`, `UI/InspectorWindow.xaml.cs`, `Overlay/OverlayWindow.xaml.cs`, `Overlay/OverlayManager.cs`, `Commands/CommandRegistry.cs`, `Commands/CapabilityCategory.cs`, `Commands/PresetManager.cs`, `Core/ToolProfileStore.cs`, `Core/ToolKind.cs`, `Core/ToolSettings.cs`, `Settings/AppSettings.cs`, `Settings/SettingsWindow.cs`.
+  - Docs: `AI/CONTEXT.md`, `AI/DECISIONS.md`, `QA_RESULTS.md`.
+  - Removed tracked scratch files: `fix.py`, `reorder.py`, `test.ps1`, `qa_test_ps.png`, `status_summary.txt`.
+- Completed work:
+  - Fixed CS0169. Fixed the Present palette open/close re-entrancy. Esc is now single-press tool termination even with a palette open. Fixed Line → text-editor regression. Fixed duplicate Line/Rectangle profile defaults. Removed dead Record/Blur/Eyedropper/connector remnants and orphaned code blocks.
+  - Full runtime QA (toolbar, direct switching, sticky tools, toolbar access, Esc, undo/redo/clear, shapes, text, screen functions, removed-feature audit). All PASS. Details in QA_RESULTS.md.
+  - Clean self-contained republish to `artifacts/publish/win-x64`. The published exe passed startup, Pen, direct switch to Arrow, Esc and clean exit.
+  - Perf (clean startup): 216.1 MB WS / 140.9 MB private / 0.00% CPU.
+- Status: Validated and checkpointed.
+- Blockers: None.
+
+## Handover — 2026-09-24 (stabilization)
+
+- Model: Claude Opus 5.5 (claude-opus-5-5)
+- Current state: branch `stabilize-current-ui` holds one checkpoint commit with the validated implementation and docs. `master` is unchanged. Published package in `artifacts/publish/win-x64` (self-contained, git-ignored). The user's `%LOCALAPPDATA%\InkIt\settings.json` was backed up before QA and restored afterwards.
+- Validation: Release build 0/0. Runtime QA PASS (Release and published exe). Idle CPU 0.00%.
+- Outstanding issues / follow-ups:
+  - Installer `artifacts/installer/InkIt_Setup_v1.0.0.exe` is from 2026-09-19. Recompile with ISCC from the new publish output before distribution.
+  - After a drawing session memory rises to ~316 MB WS / ~227 MB private (clean start is 216/141). Not investigated. Profile if it keeps growing across sessions.
+  - The Settings window title still says "ScreenCanvas Settings" (branding).
+  - `ShapeKind.Diamond` has geometry but no UI entry point.
+  - Zoom palette content was not visually verified: GDI screenshots don't capture the magnifier.
+  - `OverlayWindow.GetScaledPoint` is a placeholder that returns its input unchanged.
+- Next recommended actions: review and merge `stabilize-current-ui`, recompile the installer, then resume feature work.

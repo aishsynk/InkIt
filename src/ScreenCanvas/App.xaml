@@ -27,7 +27,7 @@
     <SolidColorBrush x:Key="DragHandleBrush" Color="#FFC7C7CC" />
     <SolidColorBrush x:Key="TrackBrush" Color="#FFE5E5EA" />
     <SolidColorBrush x:Key="ThumbBrush" Color="#FFFFFFFF" />
-    <SolidColorBrush x:Key="SelectedBrush" Color="#E8F2FF" />
+    <SolidColorBrush x:Key="SelectedBrush" Color="#D0E5FF" />
     <Style TargetType="TextBlock"><Setter Property="FontFamily" Value="Segoe UI Variable Text"/><Setter Property="TextOptions.TextFormattingMode" Value="Display"/></Style>
     <Style TargetType="Button">
       <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />

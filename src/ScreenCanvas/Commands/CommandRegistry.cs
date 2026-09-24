@@ -44,8 +44,7 @@ public sealed class CommandRegistry
         Action? onOpenSettings = null,
         Action? onOpenCommandPalette = null,
         Action? onOpenRadialMenu = null,
-        Action? onToggleOrientation = null,
-        Action? onRecordScreen = null)
+        Action? onToggleOrientation = null)
     {
         var reg = new CommandRegistry();
 
@@ -161,19 +160,6 @@ public sealed class CommandRegistry
 
         reg.Register(new()
         {
-            Id = "tool.eyedropper",
-            Name = "Eyedropper",
-            Category = CapabilityCategory.Annotate,
-            Description = "Pick a colour from anywhere on screen to use as pen colour",
-            IconKey = "Fluent.Eyedropper.Regular",
-            Shortcut = "I",
-            SearchTags = ["eyedropper", "color", "picker", "pipette", "dropper", "sample", "colour"],
-            Execute = () => overlay.SetTool(ToolKind.Eyedropper),
-            IsActive = () => overlay.Settings.Tool == ToolKind.Eyedropper
-        });
-
-        reg.Register(new()
-        {
             Id = "select",
             Name = "Selection Tool",
             Category = CapabilityCategory.Annotate,
@@ -232,11 +218,7 @@ public sealed class CommandRegistry
             IconKey = "Fluent.Shapes.Regular",
             Shortcut = "S",
             SearchTags = ["shapes", "rect", "arrow", "circle", "diagram"],
-            Execute = () =>
-            {
-                overlay.SetTool(ToolKind.Shape);
-                onInspectCategory?.Invoke("shapes");
-            },
+            Execute = () => overlay.SetTool(ToolKind.Shape),
             IsActive = () => overlay.Settings.Tool == ToolKind.Shape
         });
 
@@ -337,66 +319,6 @@ public sealed class CommandRegistry
 
         reg.Register(new()
         {
-            Id = "connector",
-            Name = "Smart Connector",
-            Category = CapabilityCategory.Shapes,
-            Description = "Flowchart line connector between diagram elements",
-            IconKey = "Fluent.Connector.Regular",
-            SearchTags = ["connector", "elbow", "link", "flowchart"],
-            Execute = () =>
-            {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.Connector;
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "cloud",
-            Name = "Cloud",
-            Category = CapabilityCategory.Shapes,
-            Description = "Cloud diagram shape for network/cloud architecture",
-            IconKey = "Fluent.Cloud.Regular",
-            SearchTags = ["cloud", "azure", "network", "aws"],
-            Execute = () =>
-            {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.Cloud;
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "database",
-            Name = "Database Cylinder",
-            Category = CapabilityCategory.Shapes,
-            Description = "Database cylinder for storage and data flow diagrams",
-            IconKey = "Fluent.Database.Regular",
-            SearchTags = ["database", "sql", "storage", "table"],
-            Execute = () =>
-            {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.Database;
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "callout",
-            Name = "Callout Bubble",
-            Category = CapabilityCategory.Shapes,
-            Description = "Speech / annotation bubble with pointer tail",
-            IconKey = "Fluent.Comment.Regular",
-            SearchTags = ["callout", "bubble", "speech", "note"],
-            Execute = () =>
-            {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.Callout;
-            }
-        });
-
-        reg.Register(new()
-        {
             Id = "stepmarker",
             Name = "Numbered Step Marker",
             Category = CapabilityCategory.Shapes,
@@ -409,36 +331,6 @@ public sealed class CommandRegistry
                 overlay.SetTool(ToolKind.NumberMarker);
             },
             IsActive = () => overlay.Settings.Tool == ToolKind.NumberMarker
-        });
-
-        reg.Register(new()
-        {
-            Id = "check",
-            Name = "Checkmark Badge",
-            Category = CapabilityCategory.Shapes,
-            Description = "Stamp a green/accent checkmark icon",
-            IconKey = "Fluent.Checkmark.Regular",
-            SearchTags = ["check", "tick", "correct", "pass"],
-            Execute = () =>
-            {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.Check;
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "cross",
-            Name = "Cross Badge",
-            Category = CapabilityCategory.Shapes,
-            Description = "Stamp a red cross icon",
-            IconKey = "Fluent.Dismiss.Regular",
-            SearchTags = ["cross", "wrong", "x", "error"],
-            Execute = () =>
-            {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.Cross;
-            }
         });
 
         reg.Register(new()
@@ -724,18 +616,6 @@ public sealed class CommandRegistry
             Execute = () => blackout.Value.ShowInteractive()
         });
 
-        reg.Register(new()
-        {
-            Id = "privacy.blur",
-            Name = "Blur / Pixelate",
-            Category = CapabilityCategory.Privacy,
-            Description = "Draw a rectangle to pixelate screen content underneath for privacy",
-            IconKey = "Fluent.EyeOff.Regular",
-            SearchTags = ["blur", "pixelate", "privacy", "censor", "obscure", "redact"],
-            Execute = () => overlay.SetTool(ToolKind.BlurPixelate),
-            IsActive = () => overlay.Settings.Tool == ToolKind.BlurPixelate
-        });
-
         // -------------------------------------------------------------
         // 6. BOARD (Category: Board)
         // -------------------------------------------------------------
@@ -783,21 +663,7 @@ public sealed class CommandRegistry
         });
 
         // -------------------------------------------------------------
-        // 7. RECORD (Category: Record)
-        // -------------------------------------------------------------
-        reg.Register(new()
-        {
-            Id = "record.screen",
-            Name = "Record Screen",
-            Category = CapabilityCategory.Record,
-            Description = "Record desktop video with cursor and live annotations",
-            IconKey = "Fluent.Target.Regular",
-            SearchTags = ["record", "video", "gif", "capture", "screen"],
-            Execute = () => onRecordScreen?.Invoke()
-        });
-
-        // -------------------------------------------------------------
-        // 8. TOOLS & NAVIGATION (Category: Tools)
+        // 7. TOOLS & NAVIGATION (Category: Tools)
         // -------------------------------------------------------------
         reg.Register(new()
         {

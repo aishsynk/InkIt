@@ -51,14 +51,8 @@ public sealed class ToolSettings
     public bool ClickVisualizerEnabled { get; set; } = true;
     public bool IsHorizontalToolbar { get; set; } = false;
 
-    // Blur/Pixelate
-    public double BlurRadius { get; set; } = 10;
-    public int BlurPixelationLevel { get; set; } = 10;
 
     // Spotlight
     public double SpotlightRadius { get; set; } = 110;
     public double SpotlightOverlayOpacity { get; set; } = 0.5;
-
-    // Eyedropper
-    public bool EyedropperAutoSwitchBack { get; set; } = true;
 }

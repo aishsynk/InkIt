@@ -25,7 +25,7 @@ public static class InspectorUIHelper
             BorderBrush = (MediaBrush)owner.FindResource("BorderBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(2),
+            Padding = new Thickness(0),
             Margin = isHoriz ? new Thickness(0, 0, 8, 0) : new Thickness(0, 0, 0, 4)
         };
         var stack = new StackPanel { Orientation = isHoriz ? Orientation.Horizontal : Orientation.Vertical };

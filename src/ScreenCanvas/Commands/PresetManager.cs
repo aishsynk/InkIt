@@ -60,7 +60,7 @@ public sealed class PresetManager
             Name = "Whiteboard",
             Description = "Focus on blank canvas sketching, diagrams, connectors, shapes and structured notes.",
             IconKey = "Fluent.Board.Regular",
-            ToolbarCommandIds = ["cursor", "pen", "highlighter", "eraser", "shapes", "connector", "text", "whiteboard", "undo", "redo", "clear", "more"],
+            ToolbarCommandIds = ["cursor", "pen", "highlighter", "eraser", "shapes", "text", "whiteboard", "undo", "redo", "clear", "more"],
             DefaultToolId = "pen"
         };
 

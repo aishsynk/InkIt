@@ -9,7 +9,6 @@ using ScreenCanvas.Core;
 using ScreenCanvas.Overlay;
 using ScreenCanvas.Presentation;
 using ScreenCanvas.Privacy;
-using ScreenCanvas.Recording;
 using ScreenCanvas.Hotkeys;
 using ScreenCanvas.Settings;
 using ScreenCanvas.Zoom;
@@ -108,8 +107,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             onOpenSettings: () => Dispatcher.BeginInvoke(OpenSettings),
             onOpenCommandPalette: () => Dispatcher.BeginInvoke(OpenCommandPalette),
             onOpenRadialMenu: () => Dispatcher.BeginInvoke(OpenRadialMenu),
-            onToggleOrientation: () => Dispatcher.BeginInvoke(ToggleOrientation),
-            onRecordScreen: () => Dispatcher.BeginInvoke(RecordScreen));
+            onToggleOrientation: () => Dispatcher.BeginInvoke(ToggleOrientation));
 
         _positionSaveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(350) };
         _positionSaveTimer.Tick += (_, _) => { _positionSaveTimer.Stop(); if (IsLoaded && !_restoringPosition) SavePosition(); };
@@ -506,7 +504,9 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             CloseMenus();
             return;
         }
-        _registry.Find("present")?.Execute();
+        // Set the tool directly: the "present" command also requests the inspector,
+        // which would re-enter this handler and toggle the just-opened palette closed.
+        _overlay.SetTool(ToolKind.Laser);
         OpenInspector(PresentButton, "present");
     }
     private void Spotlight_Click(object sender, RoutedEventArgs e)
@@ -591,21 +591,18 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
     private void Undo_Click(object sender, RoutedEventArgs e)
     {
         if (_collapsed) { _collapsed = false; UpdateCollapseState(); return; }
-        CloseMenus();
         _overlay.Undo();
     }
 
     private void Redo_Click(object sender, RoutedEventArgs e)
     {
         if (_collapsed) { _collapsed = false; UpdateCollapseState(); return; }
-        CloseMenus();
         _overlay.Redo();
     }
 
     private void Clear_Click(object sender, RoutedEventArgs e)
     {
         if (_collapsed) { _collapsed = false; UpdateCollapseState(); return; }
-        CloseMenus();
         _overlay.Clear();
     }
 
@@ -619,112 +616,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         preview.ShowDialog();
     }
 
-    private void Eyedropper_Click(object sender, RoutedEventArgs e)
-    {
-        if (_collapsed) { _collapsed = false; UpdateCollapseState(); return; }
-        CloseMenus();
-        _overlay.SetTool(ToolKind.Eyedropper);
-    }
 
-    private void BlurPixelate_Click(object sender, RoutedEventArgs e)
-    {
-        if (_collapsed) { _collapsed = false; UpdateCollapseState(); return; }
-        CloseMenus();
-        _overlay.SetTool(ToolKind.BlurPixelate);
-    }
-
-    private void Record_Click(object sender, RoutedEventArgs e)
-    {
-        if (_collapsed) { _collapsed = false; UpdateCollapseState(); return; }
-        RecordScreen();
-    }
-
-    private async void RecordScreen()
-    {
-        if (_isRecording)
-        {
-            try
-            {
-                if (_recordingService is not null)
-                {
-                    await _recordingService.StopAsync();
-                    var savedPath = _recordingService.Status.OutputPath;
-                    Dispatcher.Invoke(() =>
-                    {
-                        _recordingIndicator?.Dispose();
-                        _recordingIndicator = null;
-                    });
-                    await _recordingService.DisposeAsync();
-                    _recordingService = null;
-                    _isRecording = false;
-                    if (!string.IsNullOrEmpty(savedPath) && File.Exists(savedPath))
-                    {
-                        System.Windows.MessageBox.Show(
-                            $"Recording saved to:\n{savedPath}",
-                            "InkIt Recording",
-                            MessageBoxButton.OK,
-                            MessageBoxImage.Information);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _isRecording = false;
-                _recordingService = null;
-                Dispatcher.Invoke(() =>
-                {
-                    _recordingIndicator?.Dispose();
-                    _recordingIndicator = null;
-                });
-                System.Windows.MessageBox.Show(
-                    $"Failed to stop recording: {ex.Message}",
-                    "InkIt Recording Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
-            }
-            return;
-        }
-
-        try
-        {
-            var outputPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
-                $"InkIt_Recording_{DateTime.Now:yyyyMMdd_HHmmss}.gif");
-
-            var backend = new WindowsRecordingBackend();
-            _recordingService = new RecordingService(backend);
-
-            _recordingIndicator = new RecordingIndicator(_recordingService);
-            _recordingIndicator.Show();
-
-            var options = new RecordingOptions(
-                Target: new RecordingTarget(RecordingTargetKind.VirtualDesktop),
-                OutputPath: outputPath,
-                Format: RecordingFormat.Gif,
-                IncludeCursor: true,
-                IncludeAnnotations: true,
-                FramesPerSecond: 15);
-
-            await _recordingService.StartAsync(options);
-            _isRecording = true;
-        }
-        catch (Exception ex)
-        {
-            _isRecording = false;
-            _recordingService?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-            _recordingService = null;
-            Dispatcher.Invoke(() =>
-            {
-                _recordingIndicator?.Dispose();
-                _recordingIndicator = null;
-            });
-            System.Windows.MessageBox.Show(
-                $"Failed to start recording: {ex.Message}",
-                "InkIt Recording Error",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
-    }
 
     private void More_Click(object sender, RoutedEventArgs e)
     {

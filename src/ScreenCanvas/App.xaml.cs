@@ -27,17 +27,8 @@ public partial class App : System.Windows.Application
         _hotkeys.ToggleDrawing += (_, _) => _overlays.ToggleDrawing();
         _hotkeys.Undo += (_, _) => _overlays.Undo();
         _hotkeys.Clear += (_, _) => _overlays.Clear();
-        _hotkeys.EscapePressed += (_, _) =>
-        {
-            if (_toolbar?.IsPaletteOpen == true && _overlays.CurrentBoardColor == null && !_toolbar.IsZoomActive && !_temporaryModeActive)
-            {
-                _toolbar.CloseMenus();
-                UpdateEscapeState();
-                return;
-            }
-
-            EndCurrentTool();
-        };
+        // Esc always ends the active tool (and closes any open palette) — see DECISIONS "Global Esc invariant".
+        _hotkeys.EscapePressed += (_, _) => EndCurrentTool();
         _toolbar.HotkeysChanged = config => _hotkeys.Reconfigure(config);
         _hotkeys.RegisterDefaults(startupSettings.Hotkeys);
         _overlays.ToolChanged += (_, _) => UpdateEscapeState();
