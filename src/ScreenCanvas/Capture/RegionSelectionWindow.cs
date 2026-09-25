@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using Forms = System.Windows.Forms;
 using Point = System.Windows.Point;
+using Size = System.Windows.Size;
 using WpfRectangle = System.Windows.Shapes.Rectangle;
 using WpfBrushes = System.Windows.Media.Brushes;
 using WpfColor = System.Windows.Media.Color;
@@ -15,19 +16,29 @@ public sealed class RegionSelectionWindow : Window
     private readonly Canvas _canvas = new();
     private readonly WpfRectangle _border = new() { Stroke = WpfBrushes.DeepSkyBlue, StrokeThickness = 2, Fill = new SolidColorBrush(WpfColor.FromArgb(24, 0, 170, 255)) };
     private readonly Border _label = new() { Background = new SolidColorBrush(WpfColor.FromArgb(220, 20, 20, 20)), Padding = new System.Windows.Thickness(6, 3, 6, 3), Child = new TextBlock { Foreground = WpfBrushes.White } };
+    private readonly Border _hint;
     private Point _start;
     private bool _dragging;
 
     public CaptureRegion? SelectedRegion { get; private set; }
 
-    public RegionSelectionWindow()
+    public RegionSelectionWindow(string hint = "Drag to select an area  ·  Esc to cancel")
     {
-        var virtualScreen = Forms.SystemInformation.VirtualScreen;
-        Left = virtualScreen.Left; Top = virtualScreen.Top; Width = virtualScreen.Width; Height = virtualScreen.Height;
+        // WPF positions windows in DIPs, so use SystemParameters rather than the pixel-based Forms values.
+        Left = SystemParameters.VirtualScreenLeft; Top = SystemParameters.VirtualScreenTop;
+        Width = SystemParameters.VirtualScreenWidth; Height = SystemParameters.VirtualScreenHeight;
         WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize; ShowInTaskbar = false; Topmost = true;
         AllowsTransparency = true; Background = new SolidColorBrush(WpfColor.FromArgb(55, 0, 0, 0)); Cursor = System.Windows.Input.Cursors.Cross;
         Content = _canvas; _canvas.Children.Add(_border); _canvas.Children.Add(_label);
         _border.Visibility = _label.Visibility = Visibility.Collapsed;
+        _hint = new Border
+        {
+            Background = new SolidColorBrush(WpfColor.FromArgb(235, 15, 23, 42)), CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(16, 8, 16, 8), IsHitTestVisible = false,
+            Child = new TextBlock { Text = hint, Foreground = WpfBrushes.White, FontSize = 15, FontWeight = FontWeights.SemiBold }
+        };
+        _canvas.Children.Add(_hint);
+        Loaded += (_, _) => PlaceHint();
         MouseLeftButtonDown += Begin; MouseMove += Move; MouseLeftButtonUp += End;
         PreviewKeyDown += (_, e) =>
         {
@@ -37,6 +48,28 @@ public sealed class RegionSelectionWindow : Window
         };
         Loaded += (_, _) => { Activate(); Focus(); };
     }
+
+    /// <summary>Centres the instruction near the top of the monitor under the cursor.</summary>
+    private void PlaceHint()
+    {
+        var screen = Forms.Screen.FromPoint(Forms.Cursor.Position).Bounds;
+        var topLeft = PointFromScreen(new Point(screen.Left, screen.Top));
+        var bottomRight = PointFromScreen(new Point(screen.Right, screen.Bottom));
+        _hint.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Canvas.SetLeft(_hint, topLeft.X + (bottomRight.X - topLeft.X - _hint.DesiredSize.Width) / 2);
+        Canvas.SetTop(_hint, topLeft.Y + 110);
+    }
+
+    /// <summary>Waits until this dimmed window has left the screen so it is not in the snapshot.</summary>
+    public static void WaitUntilGone()
+    {
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
+        _ = DwmFlush();
+        _ = DwmFlush();
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmFlush();
 
     private void CancelSelection()
     {
@@ -51,7 +84,7 @@ public sealed class RegionSelectionWindow : Window
 
     private void Begin(object sender, MouseButtonEventArgs e)
     {
-        _start = e.GetPosition(_canvas); _dragging = true; CaptureMouse();
+        _start = e.GetPosition(_canvas); _dragging = true; CaptureMouse(); _hint.Visibility = Visibility.Collapsed;
         _border.Visibility = _label.Visibility = Visibility.Visible; Update(_start);
     }
 

@@ -140,7 +140,7 @@ public partial class OverlayWindow : Window
     }
 
     private bool HasVisibleContent =>
-        _board != BoardKind.Transparent || _settings.CurtainProgress > 0 || InkSurface.Strokes.Count > 0 ||
+        _board != BoardKind.Transparent || IsZoomViewActive || _settings.CurtainProgress > 0 || InkSurface.Strokes.Count > 0 ||
         ShapeSurface.Children.Count > 0;
 
     public void RefreshTool()

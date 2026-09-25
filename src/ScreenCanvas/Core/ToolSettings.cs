@@ -54,6 +54,8 @@ public sealed class ToolSettings
     public double SpotlightRadius { get; set; } = 180;
     public double SpotlightOverlayOpacity { get; set; } = 0.85;
     public double ZoomFactor { get; set; } = 2.0;
+    /// <summary>Magnifier mode: false = zoom into a dragged area that stays put (default), true = live zoom that follows the mouse.</summary>
+    public bool ZoomFollowsMouse { get; set; }
     /// <summary>Stage curtain drape, 0-100 % of screen height. Runtime only.</summary>
     public double CurtainProgress { get; set; }
 

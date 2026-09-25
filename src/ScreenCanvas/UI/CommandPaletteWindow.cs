@@ -66,8 +66,8 @@ public sealed class CommandPaletteWindow : ModalHost
             Content = new Border { Padding = new Thickness(8), Child = _results }
         };
 
-        var footer = Footer(DK.Text("Navigate with ↑ ↓ · Press Enter to execute", 11, "Ink.Text500", mono: true),
-            DK.Text("CommandRegistry v1.0.0", 11, "Ink.Text500", mono: true), new Thickness(16, 8, 16, 8));
+        var footer = Footer(DK.Text("Use ↑ ↓ to choose · Enter to run · Esc to close", 11, "Ink.Text500"),
+            DK.Text("Type what you want to do, e.g. zoom, screenshot, whiteboard", 11, "Ink.Text500"), new Thickness(16, 8, 16, 8));
         footer.SetResourceReference(Border.BackgroundProperty, "Ink.Footer");
 
         AddCard(DK.V(0, searchBar, _scroll, footer), 576, double.NaN, VerticalAlignment.Top, 96);

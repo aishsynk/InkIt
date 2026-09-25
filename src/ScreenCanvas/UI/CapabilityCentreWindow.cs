@@ -37,8 +37,8 @@ public sealed class CapabilityCentreWindow : ModalHost
         Title = "Capability Centre";
 
         var domains = registry.Commands.Select(c => c.Category).Distinct().Count();
-        var header = Header("Compass", Tw.Purple400, "Capability Centre (F10)",
-            DK.Text($"CommandRegistry · {registry.Commands.Count} commands across {domains} functional domains", 12, "Ink.Text400"));
+        var header = Header("Compass", Tw.Purple400, "All Features (F10)",
+            DK.Text($"{registry.Commands.Count} things InkIt can do, in {domains} groups. Click one to use it; star your favourites.", 12, "Ink.Text400"));
 
         _search = DK.Input(string.Empty, "Search commands, shortcuts, tags...", Tw.B(Tw.Purple500), 12);
         _search.Padding = new Thickness(30, 6, 12, 6);

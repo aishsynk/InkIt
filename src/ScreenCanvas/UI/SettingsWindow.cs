@@ -46,11 +46,8 @@ public sealed class SettingsWindow : ModalHost
         _toolbar = toolbar;
         Title = "InkIt Settings";
 
-        var subtitle = DK.H(8,
-            DK.H(4, new LucideIcon("Folder", 12) { Foreground = Tw.B(Tw.Blue400) }, DK.Text(@"%LOCALAPPDATA%\InkIt\settings.json", 11, Tw.B(Tw.Blue400), mono: true)),
-            DK.Text("·", 12, "Ink.Text400"),
-            DK.Text($"Schema v{settings.SchemaVersion}", 12, Tw.B(Tw.Emerald400)));
-        var header = Header("Settings", Tw.Blue400, "InkIt Settings (820×620)", subtitle);
+        var subtitle = DK.Text("Changes are saved automatically", 12, "Ink.Text400");
+        var header = Header("Settings", Tw.Blue400, "InkIt Settings", subtitle);
 
         var navHost = new Border { Width = 224, Padding = new Thickness(12), BorderThickness = new Thickness(0, 0, 1, 0), Child = _nav };
         navHost.SetResourceReference(Border.BackgroundProperty, "Ink.Sunken");
@@ -95,8 +92,8 @@ public sealed class SettingsWindow : ModalHost
         foreach (var (tab, name, icon) in new[]
                  {
                      (Tab.Appearance, "Appearance", "Palette"), (Tab.Toolbar, "Toolbar & Presets", "Layout"),
-                     (Tab.Hotkeys, "Hotkeys (Protected)", "Keyboard"), (Tab.Presentation, "Spotlight & Focus", "Eye"),
-                     (Tab.Profiles, "Per-Tool Profiles", "Sliders"), (Tab.Audit, "System & CPU Audit", "Cpu")
+                     (Tab.Hotkeys, "Keyboard Shortcuts", "Keyboard"), (Tab.Presentation, "Spotlight & Focus", "Eye"),
+                     (Tab.Profiles, "Tool Memory", "Sliders"), (Tab.Audit, "Performance", "Cpu")
                  })
         {
             var active = _tab == tab;
@@ -172,15 +169,13 @@ public sealed class SettingsWindow : ModalHost
             }, new Thickness(12));
         }).ToList();
 
-        var dpiBox = DK.Surface(DK.Between(DK.Text("Sub-pixel vector DPI recalculation enabled", 12, "Ink.Text300"),
+        var dpiBox = DK.Surface(DK.Between(DK.Text("Sharp on every monitor and display scaling", 12, "Ink.Text300"),
                 DK.Chip("Active", Tw.B(Tw.Emerald500, 0.2), "Ink.SuccessText", Tw.B(Colors.Transparent), 10, 4, new Thickness(8, 2, 8, 2))),
             "Ink.Raised40", "Ink.Divider", 12, new Thickness(12));
 
         return DK.V(0,
-            Section("Theme Preferences", CodeNote(("Managed by ", false), ("ThemeManager.cs", true), (" via Windows registry query.", false)), DK.Columns(3, 12, themes)),
-            Ruled(Section("DPI Scaling Mode",
-                DK.Rich(12, "Ink.Text400", ("Declared in ", null, false), ("app.manifest", "Ink.Code", true), (" as ", null, false), ("PerMonitorV2", Tw.B(Tw.Emerald400), true), (".", null, false)),
-                dpiBox)));
+            Section("Theme", DK.Text("Choose dark, light, or match your Windows setting.", 12, "Ink.Text400").Wrap(), DK.Columns(3, 12, themes)),
+            Ruled(Section("Display Scaling", null, dpiBox)));
     }
 
     private UIElement ToolbarTab()
@@ -206,20 +201,20 @@ public sealed class SettingsWindow : ModalHost
         tooltips.Margin = new Thickness(0, 12, 0, 0);
 
         return DK.V(0,
-            Section("Active Preset (PresetManager.cs)", DK.Text("Reconfigures the floating toolbar controls for educational lectures or technical demos.", 12, "Ink.Text400").Wrap(), DK.Columns(2, 12, presets)),
-            Ruled(Section("Toolbar Layout Orientation", null, orientation)),
+            Section("Toolbar Preset", DK.Text("Pick the set of toolbar buttons that suits how you present.", 12, "Ink.Text400").Wrap(), DK.Columns(2, 12, presets)),
+            Ruled(Section("Toolbar Direction", null, orientation)),
             Ruled(Section("Display", null, pill, tooltips)));
     }
 
     private UIElement Hotkeys()
     {
         var badge = DK.Surface(DK.H(4, new LucideIcon("Shield", 12) { Foreground = Tw.B(Tw.Red400), VerticalAlignment = VerticalAlignment.Center },
-                DK.Text("Protected Alt+Shift+X", 10, "Ink.DangerText")),
+                DK.Text("Panic key: Alt+Shift+X", 10, "Ink.DangerText")),
             "Ink.DangerBg", "Ink.DangerBorder", 999, new Thickness(8, 2, 8, 2));
         badge.VerticalAlignment = VerticalAlignment.Top;
         var header = DK.Between(
-            DK.V(2, DK.Text("Global Hotkey Dispatcher", 14, "Ink.Text", FontWeights.SemiBold),
-                CodeNote(("Managed by ", false), ("HotkeyManager.cs", true), (" via Win32 ", false), ("RegisterHotKey", true), (". Click a shortcut to rebind it.", false))),
+            DK.V(2, DK.Text("Keyboard Shortcuts", 14, "Ink.Text", FontWeights.SemiBold),
+                DK.Text("These keys work in any app. Click a shortcut, then press the new keys to change it.", 12, "Ink.Text400").Wrap()),
             badge);
         header.Margin = new Thickness(0, 0, 0, 16);
 
@@ -260,7 +255,7 @@ public sealed class SettingsWindow : ModalHost
             else kbd.HorizontalAlignment = HorizontalAlignment.Left;
             Cell(keysCell, row, 1, false);
             Cell(binding.Protected
-                ? DK.H(4, new LucideIcon("Shield", 12) { Foreground = Tw.B(Tw.Red400) }, DK.Text("Protected (Non-removable)", 12, Tw.B(Tw.Red400), FontWeights.SemiBold))
+                ? DK.H(4, new LucideIcon("Shield", 12) { Foreground = Tw.B(Tw.Red400) }, DK.Text("Always on (panic key)", 12, Tw.B(Tw.Red400), FontWeights.SemiBold))
                 : DK.Text("Rebindable", 12, "Ink.Text400"), row, 2, false);
             row++;
         }
@@ -334,8 +329,8 @@ public sealed class SettingsWindow : ModalHost
             titleText.Margin = new Thickness(0, 0, 0, 4);
             return DK.Surface(DK.V(0, titleText, lines), "Ink.Raised40", "Ink.Divider", 12, new Thickness(12));
         }
-        return Section("Per-Tool Visual Memory Profiles",
-            CodeNote(("", false), ("ToolProfileStore.cs", true), (" preserves isolated styles per tool so Pen, Highlighter, and Shapes remember their own thickness and colors.", false)),
+        return Section("Tool Memory",
+            DK.Text("Each tool remembers its own colour and thickness, so switching tools never loses your settings.", 12, "Ink.Text400").Wrap(),
             DK.Columns(2, 12, new UIElement[]
             {
                 Card("Pen Profile", Tw.Blue400, "Pen_Ballpoint", "#FF2563EB", 4, 255, true),
@@ -350,29 +345,28 @@ public sealed class SettingsWindow : ModalHost
         _cpuText = DK.Text("Measuring…", 12, Tw.B(Tw.Amber400), FontWeights.SemiBold);
         var optimized = _settings.Advanced.IdleCpuOptimized;
         var toggle = optimized
-            ? DK.Button(DK.Plain("Optimized (Event-Driven)", 12, FontWeights.Medium), Tw.B(Tw.Emerald600), Tw.B(Colors.White), Tw.B(Tw.Emerald500), Tw.B(Colors.White), 4, new Thickness(10, 4, 10, 4))
-            : DK.Button(DK.Plain("Unthrottled (75ms Poll)", 12, FontWeights.Medium), "Ink.Control", "Ink.Text400", "Ink.ControlHover", "Ink.Text200", 4, new Thickness(10, 4, 10, 4));
+            ? DK.Button(DK.Plain("Power saving (recommended)", 12, FontWeights.Medium), Tw.B(Tw.Emerald600), Tw.B(Colors.White), Tw.B(Tw.Emerald500), Tw.B(Colors.White), 4, new Thickness(10, 4, 10, 4))
+            : DK.Button(DK.Plain("Faster monitor detection", 12, FontWeights.Medium), "Ink.Control", "Ink.Text400", "Ink.ControlHover", "Ink.Text200", 4, new Thickness(10, 4, 10, 4));
         toggle.Click += (_, _) =>
         {
             _settings.Advanced.IdleCpuOptimized = !_settings.Advanced.IdleCpuOptimized;
             Save();
-            Toast.Show("Idle CPU mode saved - takes effect next launch");
+            Toast.Show("Saved - takes effect next time InkIt starts");
             Render();
         };
         var cpuCard = DK.Surface(DK.V(6,
                 DK.H(8, new LucideIcon("AlertCircle", 16) { Foreground = Tw.B(Tw.Amber400) }, _cpuText),
-                CodeNote(("Overlay display polling runs only while a drawing tool is active (", false), ("OverlayManager.cs", true),
-                    ("), and the magnifier glide timer (", false), ("WindowsZoomEngine.cs", true), (") stops when zoom is off.", false)),
-                DK.Between(DK.Text("Idle CPU Throttle Optimization:", 12, "Ink.Text400"), toggle)),
+                DK.Text("InkIt uses almost no processor time while you are not drawing, so it will not slow your presentation or video call.", 11, "Ink.Text400").Wrap(),
+                DK.Between(DK.Text("Background activity:", 12, "Ink.Text400"), toggle)),
             Tw.B(Tw.Amber950, 0.3), Tw.B(Tw.Amber800, 0.6), 12, new Thickness(14));
-        var nuget = DK.Surface(DK.V(4, DK.Text("Zero-NuGet Architecture Status", 12, "Ink.Text", FontWeights.Medium),
-                DK.Text("Solution verified with 0 package dependencies. Compiles against vanilla Windows 10/11 Win32 + WPF APIs.", 11, "Ink.Text400").Wrap()),
+        var nuget = DK.Surface(DK.V(4, DK.Text("Built into Windows", 12, "Ink.Text", FontWeights.Medium),
+                DK.Text("InkIt needs no extra downloads or add-ins and works offline on Windows 10 and 11.", 11, "Ink.Text400").Wrap()),
             "Ink.Raised40", "Ink.Divider", 12, new Thickness(12));
         nuget.Margin = new Thickness(0, 16, 0, 0);
         using (var process = Process.GetCurrentProcess()) { _lastCpu = process.TotalProcessorTime; }
         _lastSample = DateTime.UtcNow;
         _cpuTimer.Start();
-        var title = DK.Text("Technical Debt & System Diagnostics", 14, "Ink.Text", FontWeights.SemiBold);
+        var title = DK.Text("Performance", 14, "Ink.Text", FontWeights.SemiBold);
         title.Margin = new Thickness(0, 0, 0, 16);
         return DK.V(0, title, cpuCard, nuget);
     }

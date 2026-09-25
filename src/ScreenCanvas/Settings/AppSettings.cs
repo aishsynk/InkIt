@@ -7,7 +7,7 @@ public enum AppTheme { System, Light, Dark }
 public sealed class AppSettings
 {
     /// <summary>Bumped when the InkIt design defaults are applied to an older settings file.</summary>
-    public const int CurrentDesignVersion = 2;
+    public const int CurrentDesignVersion = 3;
 
     public int SchemaVersion { get; set; } = 1;
     // Defaults to 0 so files written before this property existed are migrated.
@@ -28,14 +28,25 @@ public sealed class AppSettings
     public bool MigrateToDesign()
     {
         if (DesignVersion >= CurrentDesignVersion) return false;
-        Appearance.Theme = AppTheme.Dark;
-        Toolbar.Horizontal = true;
-        Toolbar.FloatingX = null;
-        Toolbar.FloatingY = null;
-        Toolbar.Items = null;
-        Toolbar.Preset = "teaching";
-        Presentation = new PresentationSettings();
-        FavoriteCommands = [.. DefaultFavorites];
+        if (DesignVersion < 2)
+        {
+            Appearance.Theme = AppTheme.Dark;
+            Toolbar.Horizontal = true;
+            Toolbar.FloatingX = null;
+            Toolbar.FloatingY = null;
+            Toolbar.Items = null;
+            Toolbar.Preset = "teaching";
+            Presentation = new PresentationSettings();
+            FavoriteCommands = [.. DefaultFavorites];
+        }
+        // v3: the area Screenshot button is back on the toolbar by default, next to Zoom.
+        if (Toolbar.Items is { } items && items.FirstOrDefault(i => i.Id == "capture") is { Visible: false } capture)
+        {
+            items.Remove(capture);
+            var zoom = items.FindIndex(i => i.Id == "zoom");
+            capture.Visible = true;
+            items.Insert(zoom >= 0 ? zoom + 1 : items.Count, capture);
+        }
         DesignVersion = CurrentDesignVersion;
         return true;
     }
@@ -96,6 +107,7 @@ public sealed class PresentationSettings
     public double CodeFocusDimOpacity { get; set; } = 0.85;
     public int BreakTimerMinutes { get; set; } = 5;
     public double ZoomFactor { get; set; } = 2.0;
+    public bool ZoomFollowsMouse { get; set; }
 }
 
 public sealed class CanvasSettings

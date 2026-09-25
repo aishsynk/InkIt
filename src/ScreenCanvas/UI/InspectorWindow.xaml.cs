@@ -172,15 +172,15 @@ public partial class InspectorWindow : Window
         var s = _overlay.Settings;
         HeaderTitle.Text = _category switch
         {
-            "pen" => "PEN INSPECTOR (13 MODES)",
+            "pen" => "PEN",
             "shape" => "SHAPE & GEOMETRY",
-            "color" => "6 TEACHING COLORS",
+            "color" => "COLOURS",
             "laser" => "PRESENTER & FOCUS",
             "spotlight" => "SPOTLIGHT LENS",
-            "zoom" => "LIVE MAGNIFIER",
+            "zoom" => "ZOOM",
             "board" => "BOARD CANVAS",
             "grid" => "GRID & ALIGNMENT",
-            "highlighter" => "HIGHLIGHTER INSPECTOR",
+            "highlighter" => "HIGHLIGHTER",
             "text" => "TEXT ANNOTATION",
             "more" => "MORE TOOLS",
             _ => string.Empty
@@ -339,10 +339,7 @@ public partial class InspectorWindow : Window
 
     private UIElement BuildColor(ToolSettings s)
     {
-        var intro = DK.Rich(11, "Ink.Text400",
-            ("Scientifically paired high-contrast teaching colors from ", null, false),
-            ("ToolSettings.cs", Tw.B(Tw.Blue400), true),
-            (":", null, false));
+        var intro = DK.Text("High-contrast colours that stay readable on slides, code and video:", 11, "Ink.Text400").Wrap();
         var current = $"#{s.Color.R:X2}{s.Color.G:X2}{s.Color.B:X2}";
         var cards = TeachingColors.Select(c =>
         {
@@ -428,11 +425,50 @@ public partial class InspectorWindow : Window
 
     private UIElement BuildZoom()
     {
+        var follows = _overlay.Settings.ZoomFollowsMouse;
+        var modes = new (bool Follow, string Name, string Description)[]
+        {
+            (false, "Zoom into an area", "Drag a box. That part fills the screen and stays put, ready to draw on."),
+            (true, "Follow the mouse", "Live magnifier that moves wherever the mouse goes."),
+        };
+        var modeCards = DK.V(6, modes.Select(m =>
+        {
+            var selected = follows == m.Follow;
+            var content = DK.V(0, DK.Text(m.Name, 12, selected ? "Ink.Text" : "Ink.Text300", FontWeights.Medium), DK.Text(m.Description, 10, "Ink.Text400").Wrap());
+            var card = selected
+                ? DK.Button(content, "Ink.Selected", "Ink.Text", "Ink.Selected", "Ink.Text", 12, new Thickness(8), Tw.B(Tw.Indigo500), Tw.B(Tw.Indigo500), 1)
+                : DK.Button(content, "Ink.Raised40", "Ink.Text300", "Ink.Hover", "Ink.Text300", 12, new Thickness(8), "Ink.Divider", "Ink.Divider", 1);
+            card.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            card.Click += (_, _) =>
+            {
+                if (_overlay.Settings.ZoomFollowsMouse == m.Follow) return;
+                _overlay.UpdateOptions(o => o.ZoomFollowsMouse = m.Follow);
+                if (_owner.IsZoomActive) { _owner.ToggleZoom(); _owner.StartZoom(); }
+                Rebuild();
+            };
+            return (UIElement)card;
+        }).ToArray());
+
+        if (!follows)
+        {
+            var pick = DK.Button(DK.IconLabel("Crop", 14, _overlay.IsZoomAreaActive ? "Zoom another area" : "Choose area to zoom", 12, spacing: 6),
+                Tw.Indigo600, Tw.B(System.Windows.Media.Colors.White), Tw.B(Tw.Indigo500), Tw.B(System.Windows.Media.Colors.White), 8, new Thickness(10, 7, 10, 7));
+            pick.HorizontalContentAlignment = HorizontalAlignment.Center;
+            pick.Click += (_, _) => _owner.ZoomToArea();
+            var parts = new List<UIElement> { modeCards, pick };
+            if (_overlay.IsZoomAreaActive)
+            {
+                var exit = DK.Button(DK.IconLabel("X", 14, "Exit zoom (Esc)", 12, spacing: 6), "Ink.Control", "Ink.Text200", "Ink.ControlHover", "Ink.Text", 8, new Thickness(10, 7, 10, 7));
+                exit.HorizontalContentAlignment = HorizontalAlignment.Center;
+                exit.Click += (_, _) => { _overlay.ExitZoomArea(); Rebuild(); };
+                parts.Add(exit);
+            }
+            parts.Add(DK.Text("Tip: press Ctrl+Shift+5 any time to zoom, and Esc to go back.", 10, "Ink.Text400").Wrap());
+            return DK.V(10, parts.ToArray());
+        }
+
         var factor = _owner.ZoomFactor;
-        var intro = DK.Rich(11, "Ink.Text400",
-            ("Live Magnifier Engine using Windows ", null, false),
-            ("Magnification.dll", Tw.B(Tw.Indigo400), true),
-            (" with 60 FPS glide:", null, false));
+        var intro = DK.Text("How much to enlarge while following the mouse:", 11, "Ink.Text400").Wrap();
         var slider = DK.SliderBlock("Zoom Factor", 1, 16, 0.5, Math.Clamp(factor, 1, 16), v => $"{v:0.#}x", Tw.B(Tw.Indigo400),
             v => Apply(() => _owner.SetZoomFactor(v)), FontWeights.Bold);
         ((Slider)slider.Children[1]).Foreground = Tw.B(Tw.Indigo500);
@@ -448,7 +484,7 @@ public partial class InspectorWindow : Window
         }).ToList();
         var chips = DK.Columns(4, 4, presets);
         chips.Margin = new Thickness(0, 4, 0, 0);
-        return DK.V(12, intro, slider, chips);
+        return DK.V(12, modeCards, intro, slider, chips);
     }
 
     // ---- Board -------------------------------------------------------------------

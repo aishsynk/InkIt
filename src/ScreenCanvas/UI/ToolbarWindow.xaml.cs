@@ -87,9 +87,9 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
     public CodeFocusService CodeFocus => _codeFocus.Value;
     public KeyVisualizerService KeyVisualizer => _keyVisualizer.Value;
     public bool IsPaletteOpen => _inspector?.IsVisible == true;
-    public bool IsZoomActive =>
-        (_zoom.IsValueCreated && _zoom.Value.State != ZoomState.Inactive) ||
+    public bool IsZoomActive => IsLiveZoomActive || _overlay.IsZoomAreaActive ||
         (_staticZoom.IsValueCreated && _staticZoom.Value.IsVisible);
+    private bool IsLiveZoomActive => _zoom.IsValueCreated && _zoom.Value.State != ZoomState.Inactive;
     public CommandRegistry Registry => _registry;
     public IReadOnlyList<ToolbarItemState> Layout => _layout;
     public int BreakTimerMinutes => _appSettings.Presentation.BreakTimerMinutes;
@@ -172,6 +172,8 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         _overlay.OptionsChanged += (_, _) => Dispatcher.BeginInvoke(OnOptionsChanged);
         _overlay.BoardChanged += (_, _) => Dispatcher.BeginInvoke(RefreshItemStates);
         _overlay.PinchZoomRequested += (_, factor) => Dispatcher.BeginInvoke(() => SetZoomFactor(factor));
+        _overlay.ZoomAreaChanged += (_, _) => Dispatcher.BeginInvoke(OnZoomAreaChanged);
+        _overlay.ZoomAreaRequested += (_, _) => Dispatcher.BeginInvoke(ZoomToArea);
         _presets.ActivePresetChanged += (_, _) => Dispatcher.BeginInvoke(ApplyActivePreset);
         ThemeManager.ThemeChanged += (_, _) => Dispatcher.BeginInvoke(() => { BuildStrip(); BuildFooter(); });
 
@@ -651,8 +653,8 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
     private void OnItemClick(string id)
     {
         var s = _overlay.Settings;
-        // Live zoom is a tool in the design: picking any other tool ends it.
-        if (IsZoomActive && id is "cursor" or "select" or "pen" or "highlighter" or "eraser" or "shape" or "text" or "marker" or "laser" or "spotlight")
+        // Live zoom is a tool in the design: picking any other tool ends it. A zoomed area stays so it can be drawn on.
+        if (IsLiveZoomActive && id is "cursor" or "select" or "pen" or "highlighter" or "eraser" or "shape" or "text" or "marker" or "laser" or "spotlight")
             SetZoomFactor(1);
         switch (id)
         {
@@ -666,13 +668,13 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             case "marker": ToolClick(s.Tool == ToolKind.NumberMarker, null, false, () => _overlay.SetTool(ToolKind.NumberMarker)); break;
             case "laser": ToolClick(s.Tool == ToolKind.Laser, "laser", false, () => _overlay.SetTool(ToolKind.Laser)); break;
             case "spotlight": ToolClick(s.Tool == ToolKind.Spotlight, "spotlight", false, () => _overlay.SetTool(ToolKind.Spotlight)); break;
-            case "zoom": ToolClick(IsZoomActive, "zoom", false, StartLiveZoom); break;
+            case "zoom": ToolClick(IsZoomActive, "zoom", false, StartZoom); break;
             case "board": ToggleInspector("board"); break;
             case "color": ToggleInspector("color"); break;
             case "more": ToggleInspector("more"); break;
             case "undo": _overlay.Undo(); break;
             case "redo": _overlay.Redo(); break;
-            case "clear": _overlay.Clear(); Toast.Show("Overlay Canvas Cleared"); break;
+            case "clear": _overlay.Clear(); Toast.Show("All drawings cleared (Undo brings them back)"); break;
             case "palette": OpenCommandPalette(); break;
             case "capability": OpenCapabilityCentre(); break;
             case "capture": CaptureRegionWithPreview(); break;
@@ -897,7 +899,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         EndCurrentTool();
         HideCustomize();
         if (_breakTimer.IsValueCreated) _breakTimer.Value.EmergencyStop();
-        Toast.Show("Emergency Release: Overlays and tools safely reset");
+        Toast.Show("Panic key: all tools and overlays closed");
     }
 
     private void SetTemporaryMode(bool active)
@@ -927,6 +929,55 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
 
     public void StartLiveZoom() => SetZoomFactor(Math.Max(1.5, _overlay.Settings.ZoomFactor));
 
+    /// <summary>Magnifier button / Ctrl+Shift+5: zoom into a dragged area (default) or live-follow the mouse.</summary>
+    public void StartZoom()
+    {
+        if (_overlay.Settings.ZoomFollowsMouse) StartLiveZoom();
+        else ZoomToArea();
+    }
+
+    /// <summary>
+    /// Drag a box around part of the screen; that part is enlarged to fill the monitor and stays put
+    /// (it does not follow the mouse), ready to draw or highlight on. Esc or Cursor returns to normal.
+    /// </summary>
+    public void ZoomToArea()
+    {
+        CloseMenus();
+        if (IsLiveZoomActive) SetZoomFactor(1);
+        // Always pick from the real screen, not from an already zoomed picture.
+        var penWasAutomatic = _zoomTurnedPenOn;
+        _zoomTurnedPenOn = false;
+        _overlay.ExitZoomArea();
+        if (_capture.SelectRegion(this, "Drag a box around the part you want to zoom into   ·   Esc to cancel") is not { } area)
+        {
+            if (penWasAutomatic && _overlay.Settings.Tool != ToolKind.Cursor) _overlay.SetTool(ToolKind.Cursor);
+            RefreshItemStates();
+            return;
+        }
+        using (var bitmap = _capture.Capture(new CaptureRequest(CaptureTarget.Region, area)))
+            _overlay.ShowZoomArea(_capture.ToImage(bitmap), area);
+        if (_overlay.Settings.Tool == ToolKind.Cursor)
+        {
+            _overlay.SetPenMode(_lastPenMode);
+            _zoomTurnedPenOn = true;
+        }
+        else _zoomTurnedPenOn = penWasAutomatic;
+        RefreshItemStates();
+    }
+
+    // Set when zooming switched from Cursor to the pen, so leaving the zoom gives the normal mouse back.
+    private bool _zoomTurnedPenOn;
+
+    private void OnZoomAreaChanged()
+    {
+        if (!_overlay.IsZoomAreaActive && _zoomTurnedPenOn)
+        {
+            _zoomTurnedPenOn = false;
+            if (_overlay.Settings.Tool != ToolKind.Cursor) _overlay.SetTool(ToolKind.Cursor);
+        }
+        RefreshItemStates();
+    }
+
     /// <summary>Applies a magnifier factor (1x resets) around the cursor and remembers it.</summary>
     public void SetZoomFactor(double factor)
     {
@@ -948,8 +999,9 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
 
     public void ToggleZoom()
     {
-        if (IsZoomActive) SetZoomFactor(1);
-        else StartLiveZoom();
+        if (_overlay.IsZoomAreaActive) _overlay.ExitZoomArea();
+        else if (IsZoomActive) SetZoomFactor(1);
+        else StartZoom();
     }
 
     public void LiveZoomIn() => SetZoomFactor(ZoomFactor + 0.5);
@@ -994,8 +1046,8 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
     public void CaptureRegionWithPreview()
     {
         CloseMenus();
-        var bitmap = _capture.CaptureInteractiveRegion(this);
-        if (bitmap is null) return;
+        if (_capture.SelectRegion(this, "Drag a box around what you want to screenshot   ·   Esc to cancel") is not { } area) return;
+        var bitmap = _capture.Capture(new CaptureRequest(CaptureTarget.Region, area));
         var preview = new CapturePreviewWindow(bitmap, _capture) { Owner = this };
         preview.ShowDialog();
     }

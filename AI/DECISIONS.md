@@ -131,3 +131,10 @@
 
 - Decision: the break timer is a non-activating top-right widget (MM:SS, pause/resume, reset to 5 min, close), replacing the full-screen countdown.
 - Rationale: design parity. The presenter can keep working while the timer runs.
+
+## 2026-09-25 — Trainer-first usability (supersedes parts of the design port)
+
+- Decision: (1) Zoom defaults to "zoom into an area": drag a box, the area is frozen and enlarged on its monitor, stays put, and can be drawn on; follow-the-mouse live zoom stays available as an option in the Zoom panel (`ToolSettings.ZoomFollowsMouse`). (2) The Screenshot button is visible by default next to Zoom (settings migration v3), and a screenshot is copied to the clipboard immediately. (3) On-screen text uses plain language instead of the design's developer wording (file names, API names, sizes).
+- Rationale: the user is a corporate trainer. They asked to zoom a chosen part without the view following the mouse, for the area screenshot that the old version had, and for a layman's view of the app. This request is newer than the "copy the design, missing nothing" instruction and overrides it where the two conflict.
+- Alternatives: region zoom through the Magnification API (rejected: the toolbar leaves the view and the cursor moves at magnified speed, which makes drawing impractical); keeping Screenshot hidden (rejected: the user said it was missing).
+- Impact: the 2026-09-25 scope choice 4 no longer applies to Screenshot. Drawings made while zoomed are discarded on exit and earlier annotations come back. Leaving a zoom returns to Cursor if the zoom had switched the pen on.

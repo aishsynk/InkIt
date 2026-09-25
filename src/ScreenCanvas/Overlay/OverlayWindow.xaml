@@ -11,6 +11,10 @@
         LostMouseCapture="InputRoot_OnLostMouseCapture">
     <!-- Board surface: transparent, whiteboard, blackboard or engineering grid. -->
     <Border x:Name="BoardSurface" Background="Transparent" IsHitTestVisible="False" />
+    <!-- Zoom-to-area: a frozen snapshot of the chosen area, enlarged to fill the screen. -->
+    <Border x:Name="ZoomSurface" Background="#FF0B0F17" IsHitTestVisible="False" Visibility="Collapsed">
+      <Image x:Name="ZoomImage" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" />
+    </Border>
     <InkCanvas x:Name="InkSurface" Background="Transparent"
                EditingMode="None" EditingModeInverted="EraseByStroke" UseCustomCursor="False" />
     <!-- Kept above ink so an in-place text editor can receive keyboard/mouse input. -->

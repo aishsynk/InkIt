@@ -29,7 +29,8 @@ public partial class App : System.Windows.Application
         var settingsStore = new JsonSettingsStore(settingsPath);
         var startupSettings = settingsStore.LoadAsync().GetAwaiter().GetResult();
         startupSettings.Hotkeys.EnsureDefaults();
-        if (startupSettings.MigrateToDesign()) settingsStore.SaveAsync(startupSettings).GetAwaiter().GetResult();
+        var migrated = startupSettings.MigrateToDesign();
+        if (migrated) settingsStore.SaveAsync(startupSettings).GetAwaiter().GetResult();
         ThemeManager.Initialize(startupSettings.Appearance.Theme);
         _overlays = new OverlayManager(startupSettings, settingsStore);
         _toolbar = new ToolbarWindow(_overlays, startupSettings, settingsStore);
@@ -39,7 +40,7 @@ public partial class App : System.Windows.Application
         _hotkeys.EmergencyStop += (_, _) => EmergencyStop();
         _hotkeys.ToggleDrawing += (_, _) => _overlays.ToggleDrawing();
         _hotkeys.Undo += (_, _) => _overlays.Undo();
-        _hotkeys.Clear += (_, _) => { _overlays.Clear(); Toast.Show("Overlay Canvas Cleared"); };
+        _hotkeys.Clear += (_, _) => { _overlays.Clear(); Toast.Show("All drawings cleared (Undo brings them back)"); };
         _hotkeys.ToggleSnap += (_, _) => _toolbar.Registry.Find("canvas.snap_toggle")?.Execute();
         _hotkeys.CaptureRegion += (_, _) => _toolbar.CaptureRegionWithPreview();
         _hotkeys.ToggleZoom += (_, _) => _toolbar.ToggleZoom();
@@ -49,6 +50,7 @@ public partial class App : System.Windows.Application
         if (globalHotkeys) _hotkeys.RegisterDefaults(startupSettings.Hotkeys);
         _overlays.ToolChanged += (_, _) => UpdateEscapeState();
         _overlays.BoardChanged += (_, _) => UpdateEscapeState();
+        _overlays.ZoomAreaChanged += (_, _) => UpdateEscapeState();
         _overlays.OptionsChanged += (_, _) => UpdateEscapeState();
         _toolbar.TemporaryModeChanged += (_, active) => { _temporaryModeActive = active; UpdateEscapeState(); };
         _toolbar.PaletteStateChanged += (_, _) => UpdateEscapeState();
@@ -62,7 +64,9 @@ public partial class App : System.Windows.Application
 
         _toolbar.Show();
         if (_hotkeys.Unavailable.Count > 0)
-            Toast.Show("Hotkey in use by another app: " + string.Join(", ", _hotkeys.Unavailable));
+            Toast.Show("Another app already uses this shortcut: " + string.Join(", ", _hotkeys.Unavailable));
+        else if (migrated && !qaCapture)
+            Toast.Show("Welcome to InkIt! Hover over any button to see what it does. Esc stops drawing, Ctrl+Shift+5 zooms, Ctrl+Shift+4 takes a screenshot.");
 
         if (qaCapture) RunQaCapture(_toolbar);
     }

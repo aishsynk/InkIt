@@ -26,6 +26,15 @@ public interface IOverlayManager
     /// <summary>Raised when a two-finger pinch on the overlay asks for a new magnifier factor.</summary>
     event EventHandler<double>? PinchZoomRequested;
     void RequestPinchZoom(double factor);
+    /// <summary>Raised when zoom-to-area starts, moves to a new area or ends.</summary>
+    event EventHandler? ZoomAreaChanged;
+    /// <summary>Raised when the zoom bar asks to pick a different area.</summary>
+    event EventHandler? ZoomAreaRequested;
+    bool IsZoomAreaActive { get; }
+    /// <summary>Shows a frozen snapshot of <paramref name="pixelBounds"/> enlarged on the display that contains it.</summary>
+    void ShowZoomArea(System.Windows.Media.ImageSource image, System.Drawing.Rectangle pixelBounds);
+    void ExitZoomArea();
+    void RequestZoomArea();
     BoardKind CurrentBoard { get; }
     void SetBoardKind(BoardKind kind);
     /// <summary>Applies a change to the shared tool settings, refreshes overlays and (optionally) persists it.</summary>

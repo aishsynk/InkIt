@@ -41,6 +41,7 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
         Settings.CodeFocusBandHeight = p.CodeFocusHeight;
         Settings.CodeFocusDimOpacity = p.CodeFocusDimOpacity;
         Settings.ZoomFactor = p.ZoomFactor;
+        Settings.ZoomFollowsMouse = p.ZoomFollowsMouse;
         Settings.SnapToGrid = c.SnapToGrid;
         Settings.GridSize = Math.Clamp(c.GridSize, 5, 100);
         Settings.ShowGridGuides = c.ShowGridGuides;
@@ -76,6 +77,7 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
             p.CodeFocusHeight = Settings.CodeFocusBandHeight;
             p.CodeFocusDimOpacity = Settings.CodeFocusDimOpacity;
             p.ZoomFactor = Settings.ZoomFactor;
+            p.ZoomFollowsMouse = Settings.ZoomFollowsMouse;
             c.SnapToGrid = Settings.SnapToGrid;
             c.GridSize = Settings.GridSize;
             c.ShowGridGuides = Settings.ShowGridGuides;
@@ -90,6 +92,37 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
         if (Settings.CurtainProgress > 0) EnsureOverlays();
         ApplyInputMode();
         OptionsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // ------------------------------------------------------------------ Zoom to area
+
+    public event EventHandler? ZoomAreaChanged;
+    public event EventHandler? ZoomAreaRequested;
+    public bool IsZoomAreaActive { get; private set; }
+    public void RequestZoomArea() => ZoomAreaRequested?.Invoke(this, EventArgs.Empty);
+
+    public void ShowZoomArea(System.Windows.Media.ImageSource image, System.Drawing.Rectangle pixelBounds)
+    {
+        var center = new System.Drawing.Point(pixelBounds.Left + pixelBounds.Width / 2, pixelBounds.Top + pixelBounds.Height / 2);
+        var screen = System.Windows.Forms.Screen.FromPoint(center);
+        var display = new DisplayInfo(screen.DeviceName, screen.Bounds.Left, screen.Bounds.Top, screen.Bounds.Width, screen.Bounds.Height, screen.Primary);
+        EnsureOverlay(display);
+        foreach (var (name, window) in _windows)
+        {
+            if (name == display.DeviceName) window.EnterZoomView(image);
+            else window.ExitZoomView();
+        }
+        IsZoomAreaActive = true;
+        ApplyInputMode();
+        ZoomAreaChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ExitZoomArea()
+    {
+        if (!IsZoomAreaActive) return;
+        IsZoomAreaActive = false;
+        foreach (var window in _windows.Values) window.ExitZoomView();
+        ZoomAreaChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetBoardKind(BoardKind kind)
@@ -156,6 +189,7 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
 
         if (reason is ToolDeactivationReason.Escape or ToolDeactivationReason.CursorSelected or ToolDeactivationReason.EmergencyRelease)
         {
+            ExitZoomArea();
             if (CurrentBoard != BoardKind.Transparent)
             {
                 SetBoardKind(BoardKind.Transparent);
@@ -184,6 +218,7 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
         else
         {
             _monitorTimer.Stop();
+            ExitZoomArea();
         }
         ApplyInputMode();
         foreach (var window in _windows.Values) window.RefreshTool();

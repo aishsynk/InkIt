@@ -56,13 +56,24 @@ public sealed class CaptureService : ICaptureService
         return bitmap;
     }
 
-    public Bitmap? CaptureInteractiveRegion(Window? owner = null)
+    public Bitmap? CaptureInteractiveRegion(Window? owner = null) =>
+        SelectRegion(owner) is { } bounds ? Capture(new CaptureRequest(CaptureTarget.Region, bounds)) : null;
+
+    /// <summary>Lets the user drag out an area and returns it in screen pixels, after the picker has left the screen.</summary>
+    public Rectangle? SelectRegion(Window? owner = null, string? hint = null)
     {
-        var selector = new RegionSelectionWindow();
+        var selector = hint is null ? new RegionSelectionWindow() : new RegionSelectionWindow(hint);
         if (owner is not null) selector.Owner = owner;
-        return selector.ShowDialog() == true && selector.SelectedRegion is { IsEmpty: false } region
-            ? Capture(new CaptureRequest(CaptureTarget.Region, region.PixelBounds))
-            : null;
+        if (selector.ShowDialog() != true || selector.SelectedRegion is not { IsEmpty: false } region) return null;
+        RegionSelectionWindow.WaitUntilGone();
+        return region.PixelBounds;
+    }
+
+    public System.Windows.Media.Imaging.BitmapSource ToImage(Bitmap bitmap)
+    {
+        var image = ToBitmapSource(bitmap);
+        image.Freeze();
+        return image;
     }
 
     public void CopyToClipboard(Bitmap bitmap) => System.Windows.Clipboard.SetImage(ToBitmapSource(bitmap));
