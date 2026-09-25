@@ -127,4 +127,4 @@ if ($LASTEXITCODE -ne 0) { Fail "Tag push failed. Run: git push origin $tag, the
 
 Step 'Creating GitHub release'
 Publish-GitHubRelease $next (Get-Notes $next)
-Write-Host "Released InkIt $next: https://github.com/$Repo/releases/tag/$tag" -ForegroundColor Green
+Write-Host "Released InkIt ${next}: https://github.com/$Repo/releases/tag/$tag" -ForegroundColor Green
