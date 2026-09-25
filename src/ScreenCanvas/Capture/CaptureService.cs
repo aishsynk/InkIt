@@ -15,14 +15,14 @@ public sealed class CaptureService : ICaptureService
     public void CopyDesktopToClipboard()
     {
         using var bitmap = Capture(new CaptureRequest(CaptureTarget.VirtualDesktop));
-        System.Windows.Clipboard.SetImage(ToBitmapSource(bitmap));
+        TrySetClipboardImage(ToBitmapSource(bitmap));
     }
 
     public void CopyCurrentMonitorToClipboard()
     {
         var screen = Forms.Screen.FromPoint(Forms.Cursor.Position);
         using var bitmap = Capture(new CaptureRequest(CaptureTarget.Region, screen.Bounds));
-        System.Windows.Clipboard.SetImage(ToBitmapSource(bitmap));
+        TrySetClipboardImage(ToBitmapSource(bitmap));
     }
 
     public void SaveDesktop(string path, bool jpeg)
@@ -76,7 +76,25 @@ public sealed class CaptureService : ICaptureService
         return image;
     }
 
-    public void CopyToClipboard(Bitmap bitmap) => System.Windows.Clipboard.SetImage(ToBitmapSource(bitmap));
+    public bool CopyToClipboard(Bitmap bitmap) => TrySetClipboardImage(ToBitmapSource(bitmap));
+
+    /// <summary>Another app may briefly hold the clipboard open; retry a few times instead of failing (or crashing).</summary>
+    private static bool TrySetClipboardImage(System.Windows.Media.Imaging.BitmapSource image)
+    {
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            try
+            {
+                System.Windows.Clipboard.SetImage(image);
+                return true;
+            }
+            catch (System.Runtime.InteropServices.ExternalException)
+            {
+                System.Threading.Thread.Sleep(60);
+            }
+        }
+        return false;
+    }
 
     public void Save(Bitmap bitmap, string path, CaptureImageFormat format, long jpegQuality = 92)
     {

@@ -37,8 +37,12 @@ public sealed class CapturePreviewWindow : ModalHost
 
         var image = new Image { Source = ToBitmapSource(bitmap), Stretch = System.Windows.Media.Stretch.Uniform, Margin = new Thickness(8) };
         System.Windows.Media.RenderOptions.SetBitmapScalingMode(image, System.Windows.Media.BitmapScalingMode.HighQuality);
-        var badge = DK.Surface(DK.H(4, DK.Dot(6, Tw.B(Tw.Emerald400)), DK.Text("Copied - paste anywhere with Ctrl+V", 10, Tw.B(Tw.Emerald400))),
-            Tw.B(Tw.Slate950, 0.8), Tw.B(Tw.Slate700), 4, new Thickness(8, 2, 8, 2));
+        // Copy at once so the screenshot can be pasted (Teams, PowerPoint, email) without any extra click.
+        var copied = _capture.CopyToClipboard(_bitmap);
+        var badgeText = DK.Text(copied ? "Copied - paste anywhere with Ctrl+V" : "Could not copy yet - click Copy", 10,
+            Tw.B(copied ? Tw.Emerald400 : Tw.Amber400));
+        var badgeDot = DK.Dot(6, Tw.B(copied ? Tw.Emerald400 : Tw.Amber400));
+        var badge = DK.Surface(DK.H(4, badgeDot, badgeText), Tw.B(Tw.Slate950, 0.8), Tw.B(Tw.Slate700), 4, new Thickness(8, 2, 8, 2));
         badge.HorizontalAlignment = HorizontalAlignment.Left;
         badge.VerticalAlignment = VerticalAlignment.Top;
         badge.Margin = new Thickness(8);
@@ -48,19 +52,35 @@ public sealed class CapturePreviewWindow : ModalHost
         var preview = new Border { Padding = new Thickness(24), Child = frame };
         preview.SetResourceReference(Border.BackgroundProperty, "Ink.Kbd950");
 
-        // The screenshot is already on the clipboard; this window only offers keeping a file copy.
-        _capture.CopyToClipboard(_bitmap);
         var save = DK.Button(DK.IconLabel("Download", 14, "Save as file...", 12, spacing: 4), "Ink.Control", "Ink.Text200", "Ink.ControlHover", "Ink.Text200", 12, new Thickness(12, 6, 12, 6));
         save.ToolTip = "Save as a PNG or JPG picture (Pictures folder by default)";
         save.Click += (_, _) => Save();
-        var done = DK.Button(DK.IconLabel("Check", 14, "Done", 12, spacing: 6), Tw.B(Tw.Blue600), Tw.B(Colors.White), Tw.B(Tw.Blue500), Tw.B(Colors.White), 12, new Thickness(16, 6, 16, 6));
-        done.Effect = DK.Shadow(8, 2, 0.35);
-        done.ToolTip = "Close (the screenshot stays on the clipboard)";
-        done.Click += (_, _) => Close();
-        var hint = DK.Text("Tip: Ctrl+Shift+4 takes another screenshot", 11, "Ink.Text400");
+        var closeButton = DK.Button(DK.Plain("Close", 12, FontWeights.Medium), "Ink.Control", "Ink.Text200", "Ink.ControlHover", "Ink.Text200", 12, new Thickness(12, 6, 12, 6));
+        closeButton.ToolTip = "Close (Esc) - a copied screenshot stays on the clipboard";
+        closeButton.Click += (_, _) => Close();
+        var copyIcon = new LucideIcon(copied ? "Check" : "Copy", 14);
+        var copyText = DK.Plain(copied ? "Copied" : "Copy", 12, FontWeights.SemiBold);
+        var copy = DK.Button(DK.H(6, copyIcon, copyText), Tw.B(Tw.Blue600), Tw.B(Colors.White), Tw.B(Tw.Blue500), Tw.B(Colors.White), 12, new Thickness(16, 6, 16, 6));
+        copy.Effect = DK.Shadow(8, 2, 0.35);
+        copy.ToolTip = "Copy the screenshot so you can paste it anywhere with Ctrl+V, then close";
+        copy.Click += (_, _) =>
+        {
+            if (_capture.CopyToClipboard(_bitmap))
+            {
+                copyIcon.Kind = "Check";
+                copyText.Text = "Copied";
+                Toast.Show("Screenshot copied - paste it anywhere with Ctrl+V");
+                Close();
+            }
+            else
+            {
+                copyText.Text = "Try again";
+                Toast.Show("Another app is using the clipboard - please try Copy again");
+            }
+        };
+        var hint = DK.Text("Paste with Ctrl+V in Teams, PowerPoint, email...", 11, "Ink.Text400");
         hint.VerticalAlignment = VerticalAlignment.Center;
-        var footer = Footer(hint, DK.H(8, save, done), new Thickness(20, 12, 20, 12));
-
+        var footer = Footer(hint, DK.H(8, save, closeButton, copy), new Thickness(20, 12, 20, 12));
         AddCard(DK.V(0, header, preview, footer), 672);
     }
 

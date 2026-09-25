@@ -14,5 +14,6 @@ public interface ICaptureService
     Rectangle? SelectRegion(Window? owner = null, string? hint = null);
     System.Windows.Media.Imaging.BitmapSource ToImage(Bitmap bitmap);
     void Save(Bitmap bitmap, string path, CaptureImageFormat format, long jpegQuality = 92);
-    void CopyToClipboard(Bitmap bitmap);
+    /// <summary>Copies the image to the clipboard; false if another app kept the clipboard locked.</summary>
+    bool CopyToClipboard(Bitmap bitmap);
 }
