@@ -102,3 +102,32 @@
 
 - Decision: the global Esc hotkey always calls `EndCurrentTool`, which closes the palette and returns to Cursor with click-through. The earlier "first Esc closes the palette only" branch in `App.xaml.cs` was removed.
 - Rationale: that branch contradicted the 2026-09-03 "Global Esc invariant" and made Esc from Shapes/Laser (whose palettes open on selection) need two presses. Palettes can still be dismissed without ending the tool via ✕ or by clicking the tool button again.
+
+## 2026-09-25 — Adopt the InkIt workbench design as the WPF UI
+
+- Decision: port the `inkit-screencanvas-workbench` React design into the WPF app: toolbar, inspectors, overlay features, Capability Centre, Command Palette, Radial menu, Settings, Capture preview, HUDs and command registry.
+- Scope choices (user, 2026-09-25):
+  1. Skip the design's Windows simulation (title bar, taskbar, Quick Settings, 8-phase dossier). A desktop app must not fake the real OS shell.
+  2. Keep Blur and Recording removed, per the 2026-09-19 decision. The Diamond shape returns.
+  3. Dark slate is the default theme. A matching light variant is selectable (Dark/Light/System).
+  4. Existing extras the design lacks (Redo, Screenshot, More, Collapse) become customizable toolbar items that are hidden by default.
+- Rationale: the user asked for the full design with nothing missing. These four choices resolve conflicts between the design and a real desktop product.
+- Impact: supersedes the 2026-09-04 layout and styling decisions (compact light strip, flush twin-dock inspectors, docked More sub-menu). The earlier behavioural invariants still hold: Esc ends the active tool, sticky tools, direct switching, and the UI exclusion zone.
+
+## 2026-09-25 — Lucide icons replace Fluent System Icons
+
+- Decision: UI icons are Lucide (lucide-react 0.546.0, ISC), generated into XAML by `tools/lucide/generate_lucide_xaml.py` and drawn as 2px round strokes by `LucideIcon`.
+- Rationale: the design uses Lucide throughout, and visual fidelity requires the same glyphs. Generating the XAML from the locally installed package gives exact geometry without hand-tracing.
+- Alternatives: keep Fluent icons (visibly different from the design); download lucide-static (unnecessary, since the exact version is on disk).
+- Impact: supersedes the 2026-09-03 Fluent adoption decision for new UI. `FluentIconResources.xaml` remains only for legacy windows.
+
+## 2026-09-25 — Tool click semantics follow the design
+
+- Decision: clicking an inactive tool activates it. Pen and Shape also open their inspector; other tools close any open inspector. Clicking the already-active tool toggles its inspector. Board, Colour and More toggle their inspectors.
+- Rationale: this matches the design's `handleToolClick`, and keeps one-click direct switching.
+- Impact: the Highlighter, Text, Laser, Spotlight and Zoom inspectors open on a second click rather than immediately.
+
+## 2026-09-25 — Break timer becomes a floating widget
+
+- Decision: the break timer is a non-activating top-right widget (MM:SS, pause/resume, reset to 5 min, close), replacing the full-screen countdown.
+- Rationale: design parity. The presenter can keep working while the timer runs.

@@ -3,11 +3,12 @@
 ## Current state
 
 - Last model used: Claude Opus 5.5 (claude-opus-5-5)
-- Last tool/agent used: Claude Code desktop (Bash/PowerShell, dotnet, PowerShell UI Automation input driving); no subagent
-- Last update: 2026-09-24
-- Project state: Stabilized and checkpointed on branch `stabilize-current-ui`. Release build: 0 errors, 0 warnings. Runtime QA PASS on the Release build and the published self-contained exe (see QA_RESULTS.md, 2026-09-24).
-- Work in progress: None.
-- Pending actions: Rebuild the installer from the new `artifacts/publish/win-x64` (ISCC). Merge `stabilize-current-ui` once reviewed. Optional follow-ups are in the latest handover.
+- Last tool/agent used: Claude Code desktop (Bash/PowerShell, dotnet, UI Automation QA driving); no subagent
+- Last update: 2026-09-25 22:45 IST
+- Project state: Branch `stabilize-current-ui` at `2e929aa` (design port, work in progress). Release build 0 errors / 0 warnings. Runtime QA of the new UI is incomplete. Published package and installer still contain the pre-design build.
+- Work in progress: Port of the `inkit-screencanvas-workbench` React design to WPF.
+- Blocker: toolbar strip buttons flap IsMouseOver while hovered, so hover visuals and tooltips never show. Clicks work.
+- Checkpoints: from 2026-09-25 onward progress is logged as one-line `[YYYY-MM-DD HH:mm IST]` checkpoints at the end of this file. The newest entry is the place to resume.
 
 ## Completed work (Phase 1+2 — Trainer Audit Remediation — 2026-09-05)
 
@@ -798,3 +799,10 @@ Status update: Fixes verified.
   - Zoom palette content was not visually verified: GDI screenshots don't capture the magnifier.
   - `OverlayWindow.GetScaledPoint` is a placeholder that returns its input unchanged.
 - Next recommended actions: review and merge `stabilize-current-ui`, recompile the installer, then resume feature work.
+
+## Checkpoints
+
+[2026-09-25 22:43 IST] Task: port InkIt workbench React design to WPF. Result: committed 2e929aa on stabilize-current-ui (dark/light Ink.* theme, Lucide icons, data-driven reorderable toolbar, 288px inspectors, snap/multi-select/auto-shape/effect pens/laser trail/curtain, rebuilt modal windows, design command registry, settings migration). Files: UI/Theme/*, UI/Toolbar/*, UI/*Window.cs, Overlay/*, Commands/*, tools/lucide/*. Validation: Release build 0/0; --qa-capture renders of toolbar and all inspectors match design. Next: fix toolbar hover flapping.
+[2026-09-25 22:43 IST] Task: runtime QA of new toolbar. Result: BLOCKED. Strip buttons raise MouseEnter/MouseLeave every ~4ms while pointer rests (Mouse.DirectlyOver=template Border); no hover colour, no tooltip. Not caused by BuildStrip/RefreshItemStates (logged, not re-run). Fixed on the way: drag-reorder swallowing fast clicks. Files: UI/ToolbarWindow.xaml.cs (debug logging removed before commit). Validation: UIA Invoke and real clicks work; inspector/footer hover fine. Next: bisect: remove chrome DropShadowEffect, tooltip style, AllowDrop, per-button Effect.
+[2026-09-25 22:45 IST] Task: sync AI docs with repository. Result: PROGRESS header + checkpoints, CONTEXT UI architecture, DECISIONS design-port entries, AGENTS checkpoint rule updated. Files: AI/PROGRESS.md, AI/CONTEXT.md, AI/DECISIONS.md, AGENTS.md. Validation: docs match git HEAD 2e929aa and working tree. Next: bisect toolbar hover flapping, then finish runtime QA and republish.
+[2026-09-25 22:46 IST] HANDOVER: stabilize-current-ui at 2e929aa (design port WIP) plus uncommitted doc sync. Completed: design port, doc sync (PROGRESS/CONTEXT/DECISIONS/AGENTS). Validation: Release build 0/0; qa-capture visuals match design; clicks work. Pending/Blockers: toolbar hover/tooltips flap (IsMouseOver toggles every ~4ms); runtime QA incomplete; publish and installer still old; commit doc sync. Next: bisect hover flapping in UI/ToolbarWindow.xaml.cs (chrome DropShadowEffect, tooltip style, AllowDrop, per-button Effect), then full runtime QA.
