@@ -33,6 +33,9 @@ public sealed class CodeFocusService : IDisposable
         _window.Show();
     }
 
+    /// <summary>Applies a new slit height / dim level to a visible band.</summary>
+    public void Update(double bandHeight, double opacity) => _window?.Update(bandHeight, opacity);
+
     public void Hide()
     {
         if (_window is not null)
@@ -49,11 +52,11 @@ internal sealed class CodeFocusWindow : Window
 {
     private double _bandHeight;
     private double _bandCenterY;
-    private readonly double _dimOpacity;
+    private double _dimOpacity;
     private readonly Canvas _canvas = new() { Background = Brushes.Transparent };
     private readonly Path _dimMask = new();
-    private readonly System.Windows.Shapes.Rectangle _topBorder = new() { Fill = new SolidColorBrush(Color.FromArgb(180, 37, 99, 235)), Height = 2 };
-    private readonly System.Windows.Shapes.Rectangle _bottomBorder = new() { Fill = new SolidColorBrush(Color.FromArgb(180, 37, 99, 235)), Height = 2 };
+    private readonly System.Windows.Shapes.Rectangle _topBorder = new() { Fill = new SolidColorBrush(Color.FromRgb(0x3B, 0x82, 0xF6)), Height = 2 };
+    private readonly System.Windows.Shapes.Rectangle _bottomBorder = new() { Fill = new SolidColorBrush(Color.FromRgb(0x3B, 0x82, 0xF6)), Height = 2 };
     private bool _isDragging;
     private Point _lastMouse;
 
@@ -96,6 +99,14 @@ internal sealed class CodeFocusWindow : Window
         var style = NativeMethods.GetWindowLong(handle, NativeMethods.GwlExStyle);
         NativeMethods.SetWindowLong(handle, NativeMethods.GwlExStyle,
             style | NativeMethods.WsExToolWindow);
+    }
+
+    internal void Update(double bandHeight, double dimOpacity)
+    {
+        _bandHeight = bandHeight;
+        _dimOpacity = dimOpacity;
+        _dimMask.Fill = new SolidColorBrush(Color.FromArgb((byte)(Math.Clamp(_dimOpacity, 0, 1) * 255), 0, 0, 0));
+        UpdateMask();
     }
 
     private void UpdateMask()

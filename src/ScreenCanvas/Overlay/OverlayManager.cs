@@ -2,6 +2,7 @@ using ScreenCanvas.Core;
 using ScreenCanvas.Displays;
 using ScreenCanvas.Settings;
 using System.Windows.Threading;
+using System.Windows.Media;
 using MediaColor = System.Windows.Media.Color;
 
 namespace ScreenCanvas.Overlay;
@@ -14,6 +15,9 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
         new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _monitorTimer;
     private readonly ToolProfileStore _profiles;
+    private readonly AppSettings _appSettings;
+    private readonly ISettingsStore _store;
+    private readonly DispatcherTimer _saveTimer;
     public IUiExclusionRegionService? ExclusionService { get; set; }
     public bool IsPointOverUi(System.Windows.Point screenPixelPoint) =>
         ExclusionService?.IsPointOverUi(screenPixelPoint) ?? false;
@@ -28,14 +32,85 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
     public OverlayManager(AppSettings settings, ISettingsStore store)
     {
         _profiles = new ToolProfileStore(settings, store);
-        Settings.SpotlightRadius = settings.Spotlight.Radius;
-        Settings.SpotlightOverlayOpacity = settings.Spotlight.OverlayOpacity;
+        _appSettings = settings;
+        _store = store;
+        var p = settings.Presentation;
+        var c = settings.Canvas;
+        Settings.SpotlightRadius = p.SpotlightRadius;
+        Settings.SpotlightOverlayOpacity = p.SpotlightDimOpacity;
+        Settings.CodeFocusBandHeight = p.CodeFocusHeight;
+        Settings.CodeFocusDimOpacity = p.CodeFocusDimOpacity;
+        Settings.ZoomFactor = p.ZoomFactor;
+        Settings.SnapToGrid = c.SnapToGrid;
+        Settings.GridSize = Math.Clamp(c.GridSize, 5, 100);
+        Settings.ShowGridGuides = c.ShowGridGuides;
+        Settings.SimultaneousLaser = c.SimultaneousLaser;
+        Settings.SimultaneousSpotlight = c.SimultaneousSpotlight;
+        Settings.AutoShapeAssist = c.AutoShapeAssist;
+        Settings.ShowStatusPill = c.ShowStatusPill;
+        Settings.IsHorizontalToolbar = settings.Toolbar.Horizontal;
         _monitorTimer = new DispatcherTimer(DispatcherPriority.Input)
         {
-            Interval = TimeSpan.FromMilliseconds(75)
+            Interval = TimeSpan.FromMilliseconds(settings.Advanced.IdleCpuOptimized ? 200 : 75)
         };
         _monitorTimer.Tick += OnMonitorTimerTick;
+        _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        _saveTimer.Tick += (_, _) => { _saveTimer.Stop(); _ = _store.SaveAsync(_appSettings); };
     }
+
+    public event EventHandler? OptionsChanged;
+    public event EventHandler<double>? PinchZoomRequested;
+    public void RequestPinchZoom(double factor) => PinchZoomRequested?.Invoke(this, factor);
+    public BoardKind CurrentBoard { get; private set; } = BoardKind.Transparent;
+
+    public void UpdateOptions(Action<ToolSettings> change, bool persist = true)
+    {
+        change(Settings);
+        foreach (var window in _windows.Values) window.RefreshOptions();
+        if (persist)
+        {
+            var p = _appSettings.Presentation;
+            var c = _appSettings.Canvas;
+            p.SpotlightRadius = Settings.SpotlightRadius;
+            p.SpotlightDimOpacity = Settings.SpotlightOverlayOpacity;
+            p.CodeFocusHeight = Settings.CodeFocusBandHeight;
+            p.CodeFocusDimOpacity = Settings.CodeFocusDimOpacity;
+            p.ZoomFactor = Settings.ZoomFactor;
+            c.SnapToGrid = Settings.SnapToGrid;
+            c.GridSize = Settings.GridSize;
+            c.ShowGridGuides = Settings.ShowGridGuides;
+            c.SimultaneousLaser = Settings.SimultaneousLaser;
+            c.SimultaneousSpotlight = Settings.SimultaneousSpotlight;
+            c.AutoShapeAssist = Settings.AutoShapeAssist;
+            c.ShowStatusPill = Settings.ShowStatusPill;
+            _appSettings.Toolbar.Horizontal = Settings.IsHorizontalToolbar;
+            _saveTimer.Stop();
+            _saveTimer.Start();
+        }
+        if (Settings.CurtainProgress > 0) EnsureOverlays();
+        ApplyInputMode();
+        OptionsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetBoardKind(BoardKind kind)
+    {
+        CurrentBoard = kind;
+        CurrentBoardColor = kind switch
+        {
+            BoardKind.Whiteboard => Colors.White,
+            BoardKind.Blackboard => BlackboardColor,
+            BoardKind.Grid => GridBoardColor,
+            _ => null
+        };
+        if (kind != BoardKind.Transparent && Settings.Tool == ToolKind.Cursor) SetTool(ToolKind.Pen);
+        EnsureOverlays();
+        foreach (var window in _windows.Values) window.SetBoard(kind);
+        BoardChanged?.Invoke(this, EventArgs.Empty);
+        OptionsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public static readonly MediaColor BlackboardColor = MediaColor.FromRgb(0x0F, 0x14, 0x1C);
+    public static readonly MediaColor GridBoardColor = MediaColor.FromRgb(0x0F, 0x17, 0x2A);
 
     public event EventHandler? BoardChanged;
     public event EventHandler? InteractionStarted;
@@ -54,6 +129,7 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
         var window = new OverlayWindow(display, Settings, this);
         _windows.Add(display.DeviceName, window);
         window.InitializeHidden();
+        window.SetBoard(CurrentBoard);
         window.SetClickThrough(!IsDrawing);
         EnsureToolbarTopmost();
     }
@@ -80,9 +156,9 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
 
         if (reason is ToolDeactivationReason.Escape or ToolDeactivationReason.CursorSelected or ToolDeactivationReason.EmergencyRelease)
         {
-            if (CurrentBoardColor != null)
+            if (CurrentBoard != BoardKind.Transparent)
             {
-                SetBoard(null);
+                SetBoardKind(BoardKind.Transparent);
             }
             Settings.Tool = ToolKind.Cursor;
             _monitorTimer.Stop();
@@ -126,7 +202,7 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
         var tool = mode is PenMode.Highlighter or PenMode.StraightHighlighter ? ToolKind.Highlighter : ToolKind.Pen;
         if (!_profiles.Restore(Settings, tool, mode, Settings.Shape))
         {
-            Settings.FadeDuration = mode == PenMode.Disappearing ? TimeSpan.FromSeconds(5) : null;
+            Settings.FadeDuration = mode == PenMode.Disappearing ? TimeSpan.FromSeconds(3) : null;
             (Settings.Thickness, Settings.Opacity, Settings.PressureEnabled) = mode switch
             {
                 PenMode.Fountain => (4, (byte)255, true), PenMode.Pencil => (2, (byte)155, true),
@@ -135,6 +211,8 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
                 PenMode.Highlighter or PenMode.StraightHighlighter => (18, (byte)115, false),
                 PenMode.Glow => (6, (byte)220, false), PenMode.Dashed => (4, (byte)255, false),
                 PenMode.Dotted => (5, (byte)255, false), PenMode.Pressure => (7, (byte)255, true),
+                PenMode.Airbrush => (12, (byte)210, false), PenMode.Chalk => (6, (byte)235, false),
+                PenMode.Crayon => (6, (byte)240, false), PenMode.Rainbow => (5, (byte)255, false),
                 _ => (4, (byte)255, false)
             };
         }
@@ -183,6 +261,20 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
         foreach (var window in _windows.Values) window.RefreshTool();
     }
 
+    public void SetPressureEnabled(bool enabled)
+    {
+        Settings.PressureEnabled = enabled;
+        _profiles.Save(Settings);
+        foreach (var window in _windows.Values) window.RefreshTool();
+    }
+
+    public void SetShapeFill(bool enabled)
+    {
+        Settings.ShapeFillEnabled = enabled;
+        _profiles.Save(Settings);
+        OptionsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public void SetFade(TimeSpan? duration) => Settings.FadeDuration = duration;
 
     public void ToggleDrawing() => SetTool(IsDrawing ? ToolKind.Cursor : ToolKind.Pen);
@@ -196,15 +288,19 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
         Settings.SquareMarkers = square;
         Settings.MarkerNumber = Math.Max(1, start);
     }
-    public void ToggleBoard(bool dark) { SetBoard(CurrentBoardColor == (dark ? MediaColor.FromRgb(24, 24, 27) : MediaColor.FromRgb(255, 255, 255)) ? null : (dark ? MediaColor.FromRgb(24, 24, 27) : MediaColor.FromRgb(255, 255, 255))); }
-    public void SetBoard(MediaColor? color)
+    public void ToggleBoard(bool dark)
     {
-        CurrentBoardColor = color;
-        if (color.HasValue && Settings.Tool == ToolKind.Cursor) SetTool(ToolKind.Pen);
-        EnsureOverlays();
-        foreach (var window in _windows.Values) window.SetBoard(color);
-        BoardChanged?.Invoke(this, EventArgs.Empty);
+        var kind = dark ? BoardKind.Blackboard : BoardKind.Whiteboard;
+        SetBoardKind(CurrentBoard == kind ? BoardKind.Transparent : kind);
     }
+
+    public void SetBoard(MediaColor? color) => SetBoardKind(color switch
+    {
+        null => BoardKind.Transparent,
+        { } c when c == Colors.White => BoardKind.Whiteboard,
+        _ => BoardKind.Blackboard
+    });
+
     public void EmergencyStop() => DeactivateCurrentTool(ToolDeactivationReason.EmergencyRelease);
 
     private void ApplyInputMode()
@@ -235,6 +331,7 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
 
     public void Dispose()
     {
+        if (_saveTimer.IsEnabled) { _saveTimer.Stop(); _store.SaveAsync(_appSettings).GetAwaiter().GetResult(); }
         _monitorTimer.Stop();
         _monitorTimer.Tick -= OnMonitorTimerTick;
         foreach (var window in _windows.Values) window.Close();

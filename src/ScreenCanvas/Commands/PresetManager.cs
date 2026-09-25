@@ -6,75 +6,45 @@ public sealed class PresetDefinition
     public required string Name { get; init; }
     public required string Description { get; init; }
     public required string IconKey { get; init; }
-    public required List<string> ToolbarCommandIds { get; init; }
-    public string DefaultToolId { get; init; } = "cursor";
-    public bool IsBuiltIn { get; init; } = true;
+    public string DefaultToolId { get; init; } = string.Empty;
 }
 
+/// <summary>Presenter presets from the design's Settings → Toolbar &amp; Presets tab (PresetManager.cs).</summary>
 public sealed class PresetManager
 {
     public static PresetManager Instance { get; } = new();
 
-    private readonly List<PresetDefinition> _presets = [];
-    public IReadOnlyList<PresetDefinition> Presets => _presets;
-
-    public PresetDefinition ActivePreset { get; private set; }
-
-    public event EventHandler<PresetDefinition>? ActivePresetChanged;
-
-    private PresetManager()
-    {
-        var teaching = new PresetDefinition
+    private readonly List<PresetDefinition> _presets =
+    [
+        new()
         {
             Id = "teaching",
-            Name = "Teaching",
-            Description = "Standard trainer layout with pen, highlighter, shapes, text, zoom, and present tools.",
-            IconKey = "Fluent.Pen.Regular",
-            ToolbarCommandIds = ["cursor", "pen", "highlighter", "eraser", "shapes", "text", "present", "zoom", "undo", "redo", "clear", "more"],
-            DefaultToolId = "pen"
-        };
-
-        var techDemo = new PresetDefinition
+            Name = "Teaching Preset",
+            Description = "Pen, Highlighter, Arrow Shapes, Whiteboard, Numbered Markers, Break Timer",
+            IconKey = "Pen",
+            DefaultToolId = "annot.pen"
+        },
+        new()
         {
             Id = "techdemo",
-            Name = "Technical Demo",
-            Description = "Optimized for coding, SSMS, Visual Studio, Azure Portal and terminal demonstrations.",
-            IconKey = "Fluent.Desktop.Regular",
-            ToolbarCommandIds = ["cursor", "pen", "arrow", "codefocus", "zoom", "freeze", "clickvis", "keyvis", "undo", "redo", "clear", "more"],
-            DefaultToolId = "cursor"
-        };
+            Name = "TechDemo Preset",
+            Description = "Laser Pointer, Code Focus Slit, Curtain, Live Zoom, Keystroke Visualizer, DemoType",
+            IconKey = "Terminal",
+            DefaultToolId = "present.laser"
+        }
+    ];
 
-        var presentation = new PresetDefinition
-        {
-            Id = "presentation",
-            Name = "Presentation",
-            Description = "Focus on laser pointer, spotlight, timer, slide controls and clean attention direction.",
-            IconKey = "Fluent.SlideShow.Regular",
-            ToolbarCommandIds = ["cursor", "laser", "present.spotlight", "codefocus", "zoom", "breaktimer", "slidenext", "slideprev", "undo", "clear", "more"],
-            DefaultToolId = "laser"
-        };
+    public IReadOnlyList<PresetDefinition> Presets => _presets;
+    public PresetDefinition ActivePreset { get; private set; }
+    public event EventHandler<PresetDefinition>? ActivePresetChanged;
 
-        var whiteboard = new PresetDefinition
-        {
-            Id = "whiteboard",
-            Name = "Whiteboard",
-            Description = "Focus on blank canvas sketching, diagrams, connectors, shapes and structured notes.",
-            IconKey = "Fluent.Board.Regular",
-            ToolbarCommandIds = ["cursor", "pen", "highlighter", "eraser", "shapes", "text", "whiteboard", "undo", "redo", "clear", "more"],
-            DefaultToolId = "pen"
-        };
-
-        _presets.AddRange([teaching, techDemo, presentation, whiteboard]);
-        ActivePreset = teaching;
-    }
+    private PresetManager() => ActivePreset = _presets[0];
 
     public void SetActivePreset(string id)
     {
         var preset = _presets.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
-        if (preset is not null && preset != ActivePreset)
-        {
-            ActivePreset = preset;
-            ActivePresetChanged?.Invoke(this, preset);
-        }
+        if (preset is null || preset == ActivePreset) return;
+        ActivePreset = preset;
+        ActivePresetChanged?.Invoke(this, preset);
     }
 }

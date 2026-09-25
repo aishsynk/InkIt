@@ -5,8 +5,27 @@ using ScreenCanvas.Capture;
 using ScreenCanvas.Presentation;
 using ScreenCanvas.Zoom;
 using ScreenCanvas.Privacy;
+using ScreenCanvas.UI;
 
 namespace ScreenCanvas.Commands;
+
+/// <summary>Services and toolbar the command registry drives.</summary>
+public sealed class CommandContext
+{
+    public required IOverlayManager Overlay { get; init; }
+    public required ICaptureService Capture { get; init; }
+    public required Lazy<WindowsZoomEngine> Zoom { get; init; }
+    public required Lazy<StaticZoomService> StaticZoom { get; init; }
+    public required Lazy<BreakTimerService> BreakTimer { get; init; }
+    public required Lazy<DemoTypeService> DemoType { get; init; }
+    public required Lazy<CurtainService> Curtain { get; init; }
+    public required Lazy<FreezeFrameService> Freeze { get; init; }
+    public required Lazy<PointerEffectsService> PointerEffects { get; init; }
+    public required Lazy<BlackoutRegionService> Blackout { get; init; }
+    public required Lazy<CodeFocusService> CodeFocus { get; init; }
+    public required Lazy<KeyVisualizerService> KeyVisualizer { get; init; }
+    public required ToolbarWindow Toolbar { get; init; }
+}
 
 public sealed class CommandRegistry
 {
@@ -21,696 +40,195 @@ public sealed class CommandRegistry
     public IEnumerable<CommandItem> GetByCategory(CapabilityCategory category) =>
         _commands.Where(c => c.Category == category);
 
-    public IEnumerable<CommandItem> Search(string query)
-    {
-        if (string.IsNullOrWhiteSpace(query)) return _commands;
-        return _commands.Where(c => c.Matches(query));
-    }
+    public IEnumerable<CommandItem> Search(string query) =>
+        string.IsNullOrWhiteSpace(query) ? _commands : _commands.Where(c => c.Matches(query));
 
-    public static CommandRegistry Create(
-        IOverlayManager overlay,
-        ICaptureService capture,
-        Lazy<WindowsZoomEngine> zoom,
-        Lazy<StaticZoomService> staticZoom,
-        Lazy<BreakTimerService> breakTimer,
-        Lazy<DemoTypeService> demoType,
-        Lazy<CurtainService> curtain,
-        Lazy<FreezeFrameService> freeze,
-        Lazy<PointerEffectsService> pointerEffects,
-        Lazy<BlackoutRegionService> blackout,
-        Lazy<CodeFocusService> codeFocus,
-        Lazy<KeyVisualizerService> keyVisualizer,
-        Action<string>? onInspectCategory = null,
-        Action? onOpenSettings = null,
-        Action? onOpenCommandPalette = null,
-        Action? onOpenRadialMenu = null,
-        Action? onToggleOrientation = null)
+    /// <summary>Builds the registry from the InkIt design (commandsData.ts) plus InkIt desktop extras.</summary>
+    public static CommandRegistry Create(CommandContext ctx)
     {
         var reg = new CommandRegistry();
+        var overlay = ctx.Overlay;
+        var toolbar = ctx.Toolbar;
+        var s = overlay.Settings;
 
-        // -------------------------------------------------------------
-        // 1. ANNOTATE (Category: Annotate)
-        // -------------------------------------------------------------
-        reg.Register(new()
-        {
-            Id = "cursor",
-            Name = "Cursor / Pointer",
-            Category = CapabilityCategory.Annotate,
-            Description = "Normal interactive desktop cursor with transparent click-through",
-            IconKey = "Fluent.Cursor.Regular",
-            Shortcut = "Esc",
-            SearchTags = ["mouse", "pointer", "arrow", "click", "interact", "escape"],
-            Execute = () => overlay.SetTool(ToolKind.Cursor),
-            IsActive = () => overlay.Settings.Tool == ToolKind.Cursor
-        });
-
-        reg.Register(new()
-        {
-            Id = "pen",
-            Name = "Ballpoint Pen",
-            Category = CapabilityCategory.Annotate,
-            Description = "Smooth freehand drawing with vector curve fitting",
-            IconKey = "Fluent.Pen.Regular",
-            Shortcut = "P",
-            SearchTags = ["draw", "write", "ink", "ballpoint", "sketch"],
-            Execute = () =>
+        void Add(string id, string name, CapabilityCategory category, string description, string icon, string? shortcut, string[] tags,
+            Action execute, Func<bool>? isActive = null) =>
+            reg.Register(new CommandItem
             {
-                overlay.SetTool(ToolKind.Pen);
-                overlay.SetPenMode(PenMode.Ballpoint);
-            },
-            IsActive = () => overlay.Settings.Tool == ToolKind.Pen && overlay.Settings.PenMode == PenMode.Ballpoint
-        });
+                Id = id, Name = name, Category = category, Description = description, IconKey = icon,
+                Shortcut = shortcut, SearchTags = tags, Execute = execute, IsActive = isActive
+            });
 
-        reg.Register(new()
-        {
-            Id = "pen.pencil",
-            Name = "Pencil",
-            Category = CapabilityCategory.Annotate,
-            Description = "Subtle translucent sketch strokes",
-            IconKey = "Fluent.Pencil.Regular",
-            SearchTags = ["draw", "sketch", "pencil", "graphite"],
-            Execute = () =>
+        void Shape(ShapeKind kind) => overlay.SetShape(kind);
+
+        // ---------------------------------------------------------------- Annotate
+        Add("annot.pen", "Freehand Pen", CapabilityCategory.Annotate, "Smooth vector drawing with pressure support and 13 pen modes", "Pen", "P",
+            ["pen", "draw", "ink", "ballpoint", "calligraphy"], () => { overlay.SetPenMode(PenMode.Ballpoint); toolbar.RememberPenMode(PenMode.Ballpoint); },
+            () => s.Tool == ToolKind.Pen);
+        Add("annot.highlighter", "Broad Highlighter", CapabilityCategory.Annotate, "115-alpha translucent ink for marking text and diagrams without obscuring content", "Highlighter", "H",
+            ["highlight", "marker", "yellow", "translucent"], () => toolbar.SelectTool(ToolKind.Highlighter), () => s.Tool == ToolKind.Highlighter);
+        Add("annot.eraser", "Stroke / Point Eraser", CapabilityCategory.Annotate, "Remove individual ink strokes or point-erase annotations", "Eraser", "E",
+            ["erase", "delete", "rub", "clear stroke"], () => overlay.SetTool(ToolKind.Eraser), () => s.Tool == ToolKind.Eraser);
+        Add("annot.undo", "Undo Annotation", CapabilityCategory.Annotate, "Revert the last stroke or shape action from the undo stack", "Undo", "Ctrl+Shift+Z",
+            ["undo", "revert", "back"], overlay.Undo);
+        Add("annot.redo", "Redo Annotation", CapabilityCategory.Annotate, "Re-apply previously undone stroke or shape", "Redo", "Ctrl+Shift+Y",
+            ["redo", "forward", "repeat"], overlay.Redo);
+        Add("annot.clear", "Clear All Annotations", CapabilityCategory.Annotate, "Wipe all drawings, shapes, and markers on current overlay", "Trash2", "Ctrl+Shift+Del",
+            ["clear", "wipe", "reset canvas", "clean"], () => { overlay.Clear(); Toast.Show("Overlay Canvas Cleared"); });
+        Add("annot.text", "Floating Text Box", CapabilityCategory.Annotate, "Click anywhere on screen to type crisp vector text annotations", "Type", "T",
+            ["text", "label", "type", "font", "notes"], () => overlay.SetTool(ToolKind.Text), () => s.Tool == ToolKind.Text);
+        Add("annot.marker", "Numbered Step Marker", CapabilityCategory.Annotate, "Stamp sequential circular badges (1, 2, 3...) for presentation steps", "ListOrdered", "N",
+            ["step", "number", "sequence", "badge", "marker"], () => overlay.SetTool(ToolKind.NumberMarker), () => s.Tool == ToolKind.NumberMarker);
+        Add("annot.disappearing_pen", "Disappearing Ink", CapabilityCategory.Annotate, "Temporary ink that smoothly fades out after 3 seconds", "Sparkles", "D",
+            ["fade", "disappear", "temporary", "ghost ink"], () => { overlay.SetPenMode(PenMode.Disappearing); toolbar.RememberPenMode(PenMode.Disappearing); },
+            () => s.Tool == ToolKind.Pen && s.PenMode == PenMode.Disappearing);
+        Add("annot.select", "Multi-Select Marquee", CapabilityCategory.Annotate, "Select multiple elements to batch move, recolor, duplicate, or delete", "BoxSelect", "V",
+            ["select", "marquee", "move", "batch", "duplicate"], () => overlay.SetTool(ToolKind.Select), () => s.Tool == ToolKind.Select);
+
+        // ---------------------------------------------------------------- Shapes
+        Add("shape.line", "Straight Line", CapabilityCategory.Shapes, "Draw snapped straight lines with configurable thickness", "Minus", "L",
+            ["line", "rule", "straight", "vector"], () => Shape(ShapeKind.Line));
+        Add("shape.arrow", "Directional Arrow", CapabilityCategory.Shapes, "Precision vector arrow with dynamic chevron head calculation", "ArrowRight", "A",
+            ["arrow", "pointer", "direct", "vector arrow"], () => Shape(ShapeKind.Arrow));
+        Add("shape.double_arrow", "Bidirectional Double Arrow", CapabilityCategory.Shapes, "Arrow with arrowhead indicators on both endpoints", "MoveHorizontal", "Shift+A",
+            ["double arrow", "span", "measurement", "dimension"], () => Shape(ShapeKind.DoubleArrow));
+        Add("shape.rectangle", "Bounding Rectangle", CapabilityCategory.Shapes, "Box callout with optional semi-transparent fill", "Square", "R",
+            ["rect", "rectangle", "box", "callout", "frame"], () => Shape(ShapeKind.Rectangle));
+        Add("shape.rounded_rect", "Rounded Rectangle", CapabilityCategory.Shapes, "Smooth pill-corner container box for UI annotations", "SquareDot", "Shift+R",
+            ["rounded rect", "pill", "smooth frame"], () => Shape(ShapeKind.RoundedRectangle));
+        Add("shape.ellipse", "Ellipse / Circle", CapabilityCategory.Shapes, "Circular or oval highlight focus ring", "Circle", "O",
+            ["circle", "ellipse", "round", "halo"], () => Shape(ShapeKind.Ellipse));
+        Add("shape.diamond", "Decision Diamond", CapabilityCategory.Shapes, "Flowchart decision node polygon marker", "Diamond", "Shift+D",
+            ["diamond", "rhombus", "flowchart"], () => Shape(ShapeKind.Diamond));
+        Add("shape.fill_toggle", "Toggle Shape Fill", CapabilityCategory.Shapes, "Enable or disable 20% interior tint on drawn geometric shapes", "PaintBucket", "F",
+            ["fill", "tint", "solid", "color fill"], () =>
             {
-                overlay.SetTool(ToolKind.Pen);
-                overlay.SetPenMode(PenMode.Pencil);
-            },
-            IsActive = () => overlay.Settings.Tool == ToolKind.Pen && overlay.Settings.PenMode == PenMode.Pencil
-        });
+                var enabled = !s.ShapeFillEnabled;
+                overlay.SetShapeFill(enabled);
+                Toast.Show($"Shape fill {(enabled ? "enabled" : "disabled")}");
+            }, () => s.ShapeFillEnabled);
+        Add("shape.hub", "Shapes Hub", CapabilityCategory.Shapes, "Activate vector shapes and open the Shape & Geometry inspector", "Shapes", "S",
+            ["shapes", "geometry", "inspector"], () => { overlay.SetShape(s.Shape); toolbar.ShowInspector("shape"); }, () => s.Tool == ToolKind.Shape);
 
-        reg.Register(new()
-        {
-            Id = "pen.marker",
-            Name = "Marker",
-            Category = CapabilityCategory.Annotate,
-            Description = "Bold opaque marker strokes for emphasis",
-            IconKey = "Fluent.Highlight.Regular",
-            SearchTags = ["bold", "marker", "draw"],
-            Execute = () =>
+        // ---------------------------------------------------------------- Present
+        Add("present.laser", "Laser Pointer", CapabilityCategory.Present, "Glowing laser point with smooth decaying physics tail", "Flame", "Ctrl+Shift+L",
+            ["laser", "pointer", "red dot", "tail", "presenter"], () => overlay.SetTool(ToolKind.Laser), () => s.Tool == ToolKind.Laser);
+        Add("present.spotlight", "Focus Spotlight", CapabilityCategory.Present, "Dim the entire monitor except a movable circular spotlight lens", "SunMedium", "Ctrl+Shift+S",
+            ["spotlight", "dim", "aperture", "focus light"], () => overlay.SetTool(ToolKind.Spotlight), () => s.Tool == ToolKind.Spotlight);
+        Add("present.break_timer", "Presenter Break Timer", CapabilityCategory.Present, "Floating countdown clock for talk recesses and intervals", "Timer", "Ctrl+Shift+B",
+            ["timer", "break", "countdown", "clock"], () => toolbar.StartBreakTimer(toolbar.BreakTimerMinutes), () => ctx.BreakTimer.IsValueCreated && ctx.BreakTimer.Value.IsRunning);
+        Add("present.key_visualizer", "Keystroke Visualizer HUD", CapabilityCategory.Present, "Non-activating overlay HUD broadcasting shortcuts as typed", "Keyboard", "Ctrl+Shift+K",
+            ["keys", "keystroke", "hud", "shortcut display"], () =>
             {
-                overlay.SetTool(ToolKind.Pen);
-                overlay.SetPenMode(PenMode.Marker);
-            },
-            IsActive = () => overlay.Settings.Tool == ToolKind.Pen && overlay.Settings.PenMode == PenMode.Marker
-        });
-
-        reg.Register(new()
-        {
-            Id = "pen.dashed",
-            Name = "Dashed Ink",
-            Category = CapabilityCategory.Annotate,
-            Description = "Draw dashed annotation strokes",
-            IconKey = "Fluent.Pen.Dashed.Regular",
-            SearchTags = ["dashed", "dash", "broken"],
-            Execute = () =>
+                ctx.KeyVisualizer.Value.Toggle();
+                Toast.Show($"Keystroke Visualizer {(ctx.KeyVisualizer.Value.IsEnabled ? "on" : "off")}");
+            }, () => ctx.KeyVisualizer.IsValueCreated && ctx.KeyVisualizer.Value.IsEnabled);
+        Add("present.demo_type", "Demo Type Simulator", CapabilityCategory.Present, "Simulate realistic human typing into target window for live demos", "Terminal", "Ctrl+Shift+T",
+            ["demo", "type", "script", "auto type", "automation"], () => toolbar.RunDemoType("// Executing automated DemoType script in target window\nconsole.log(\"InkIt Live Demo v1.0.0\");"));
+        Add("present.pointer_effects", "Pointer Click Ripples", CapabilityCategory.Present, "Emit animated pulse rings on left, right, and drag mouse events", "MousePointerClick", "Alt+Shift+P",
+            ["ripple", "click ripple", "cursor pulse", "rings"], () =>
             {
-                overlay.SetTool(ToolKind.Pen);
-                overlay.SetPenMode(PenMode.Dashed);
-            }
-        });
+                s.ClickVisualizerEnabled = !(ctx.PointerEffects.IsValueCreated && ctx.PointerEffects.Value.IsVisible);
+                if (s.ClickVisualizerEnabled) ctx.PointerEffects.Value.Show(new() { ClickPulse = true, LaserTrail = false });
+                else ctx.PointerEffects.Value.Hide();
+                Toast.Show($"Pointer click ripples {(s.ClickVisualizerEnabled ? "on" : "off")}");
+            }, () => ctx.PointerEffects.IsValueCreated && ctx.PointerEffects.Value.IsVisible);
 
-        reg.Register(new()
-        {
-            Id = "highlighter",
-            Name = "Highlighter",
-            Category = CapabilityCategory.Annotate,
-            Description = "Translucent highlighting over text, code, or images",
-            IconKey = "Fluent.Highlight.Regular",
-            Shortcut = "H",
-            SearchTags = ["highlight", "yellow", "translucent", "glow"],
-            Execute = () =>
+        // ---------------------------------------------------------------- Screen
+        Add("screen.zoom_toggle", "Toggle Live Magnifier", CapabilityCategory.Screen, "Magnification API 60FPS cursor-following live zoom (1x to 16x)", "ZoomIn", "Ctrl+Shift+5",
+            ["zoom", "magnify", "scale", "lens", "glide"], toolbar.ToggleZoom, () => toolbar.IsZoomActive);
+        Add("screen.capture_region", "Capture Screen Region", CapabilityCategory.Screen, "Drag crosshair selection to capture rectangle to clipboard or file", "Crop", "Ctrl+Shift+4",
+            ["capture", "snip", "screenshot", "region", "crop"], toolbar.CaptureRegionWithPreview);
+        Add("screen.capture_full", "Capture Full Desktop", CapabilityCategory.Screen, "Instant snapshot of all connected displays including annotations", "Monitor", "Ctrl+Shift+PrintScreen",
+            ["full screenshot", "desktop snip", "displays"], toolbar.CaptureFullDesktopWithPreview);
+        Add("screen.freeze_frame", "Freeze Frame Screen", CapabilityCategory.Screen, "Pause live display buffer in place while annotating freely", "PauseCircle", "Ctrl+Shift+F",
+            ["freeze", "pause", "still frame", "lock screen"], toolbar.FreezeScreen, () => ctx.Freeze.IsValueCreated && ctx.Freeze.Value.IsFrozen);
+
+        // ---------------------------------------------------------------- Privacy
+        Add("privacy.code_focus", "Code Focus Slit Band", CapabilityCategory.Privacy, "Isolate code lines inside a bright horizontal slit while shading surrounding code", "ScanLine", "Ctrl+Shift+C",
+            ["code focus", "slit", "highlight line", "shader band"], toolbar.ToggleCodeFocus, () => ctx.CodeFocus.IsValueCreated && ctx.CodeFocus.Value.IsVisible);
+        Add("privacy.curtain", "Presentation Stage Curtain", CapabilityCategory.Privacy, "Adjustable curtain shade revealing screen content step-by-step", "PanelTopClose", "Ctrl+Shift+U",
+            ["curtain", "blind", "drape", "reveal", "shade"], () =>
             {
-                overlay.SetTool(ToolKind.Highlighter);
-                overlay.SetPenMode(PenMode.Highlighter);
-            },
-            IsActive = () => overlay.Settings.Tool == ToolKind.Highlighter
-        });
+                overlay.UpdateOptions(o => o.CurtainProgress = o.CurtainProgress > 0 ? 0 : 40, persist: false);
+                if (s.CurtainProgress > 0) toolbar.ShowInspector("laser");
+            }, () => s.CurtainProgress > 0);
+        Add("privacy.blackout", "Blackout Privacy Censor", CapabilityCategory.Privacy, "Draw dark opaque redact boxes over passwords, tokens, and PII", "EyeOff", "Ctrl+Shift+X",
+            ["censor", "redact", "blackout", "privacy", "hide"], () => ctx.Blackout.Value.ShowInteractive());
 
-        reg.Register(new()
-        {
-            Id = "eraser",
-            Name = "Eraser",
-            Category = CapabilityCategory.Annotate,
-            Description = "Stroke and vector object eraser",
-            IconKey = "Fluent.EraserTool.Regular",
-            Shortcut = "E",
-            SearchTags = ["erase", "delete", "remove", "rub"],
-            Execute = () => overlay.SetTool(ToolKind.Eraser),
-            IsActive = () => overlay.Settings.Tool == ToolKind.Eraser
-        });
-
-        reg.Register(new()
-        {
-            Id = "select",
-            Name = "Selection Tool",
-            Category = CapabilityCategory.Annotate,
-            Description = "Select, move, and transform drawn annotations",
-            IconKey = "Fluent.Crop.Regular",
-            SearchTags = ["select", "move", "drag", "transform"],
-            Execute = () => overlay.SetTool(ToolKind.Select),
-            IsActive = () => overlay.Settings.Tool == ToolKind.Select
-        });
-
-        reg.Register(new()
-        {
-            Id = "undo",
-            Name = "Undo",
-            Category = CapabilityCategory.Annotate,
-            Description = "Revert last drawn stroke, shape or action",
-            IconKey = "Fluent.ArrowUndo.Regular",
-            Shortcut = "Ctrl+Z",
-            SearchTags = ["undo", "back", "revert"],
-            Execute = () => overlay.Undo()
-        });
-
-        reg.Register(new()
-        {
-            Id = "redo",
-            Name = "Redo",
-            Category = CapabilityCategory.Annotate,
-            Description = "Reapply previously undone stroke or shape",
-            IconKey = "Fluent.ArrowRedo.Regular",
-            Shortcut = "Ctrl+Y",
-            SearchTags = ["redo", "repeat", "forward"],
-            Execute = () => overlay.Redo()
-        });
-
-        reg.Register(new()
-        {
-            Id = "clear",
-            Name = "Clear Screen",
-            Category = CapabilityCategory.Annotate,
-            Description = "Undoable erase of all annotations across all monitors",
-            IconKey = "Fluent.Dismiss.Regular",
-            Shortcut = "Ctrl+Shift+Del",
-            SearchTags = ["clear", "wipe", "clean", "reset"],
-            Execute = () => overlay.Clear()
-        });
-
-        // -------------------------------------------------------------
-        // 2. SHAPES (Category: Shapes)
-        // -------------------------------------------------------------
-        reg.Register(new()
-        {
-            Id = "shapes",
-            Name = "Shapes Hub",
-            Category = CapabilityCategory.Shapes,
-            Description = "Vector diagram shapes, arrows, markers, and callouts",
-            IconKey = "Fluent.Shapes.Regular",
-            Shortcut = "S",
-            SearchTags = ["shapes", "rect", "arrow", "circle", "diagram"],
-            Execute = () => overlay.SetTool(ToolKind.Shape),
-            IsActive = () => overlay.Settings.Tool == ToolKind.Shape
-        });
-
-        reg.Register(new()
-        {
-            Id = "arrow",
-            Name = "Process Arrow",
-            Category = CapabilityCategory.Shapes,
-            Description = "Straight directional arrow with clean arrowhead",
-            IconKey = "Fluent.ArrowRight.Regular",
-            Shortcut = "A",
-            SearchTags = ["arrow", "point", "direction", "process"],
-            Execute = () =>
+        // ---------------------------------------------------------------- Board
+        Add("board.transparent", "Transparent Desktop", CapabilityCategory.Board, "Standard mode: write and draw directly over desktop and open apps", "Layers", "F1",
+            ["transparent", "desktop", "overlay", "passthrough"], () => overlay.SetBoardKind(BoardKind.Transparent), () => overlay.CurrentBoard == BoardKind.Transparent);
+        Add("board.whiteboard", "Whiteboard Canvas", CapabilityCategory.Board, "Solid clean white backdrop for lecturing, diagrams, and notes", "FileText", "F2",
+            ["whiteboard", "clean canvas", "lecture", "teaching"], () => overlay.SetBoardKind(BoardKind.Whiteboard), () => overlay.CurrentBoard == BoardKind.Whiteboard);
+        Add("board.blackboard", "Dark Blackboard", CapabilityCategory.Board, "Chalkboard black backdrop with high-contrast color palette", "Square", "F3",
+            ["blackboard", "chalkboard", "dark mode canvas"], () => overlay.SetBoardKind(BoardKind.Blackboard), () => overlay.CurrentBoard == BoardKind.Blackboard);
+        Add("board.grid", "Engineering Grid Paper", CapabilityCategory.Board, "Graph coordinate grid for math sketches and architecture blueprints", "Grid", "F4",
+            ["grid", "graph", "blueprint", "math", "coordinates"], () =>
             {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.Arrow;
-            },
-            IsActive = () => overlay.Settings.Tool == ToolKind.Shape && overlay.Settings.Shape == ShapeKind.Arrow
-        });
+                overlay.SetBoardKind(BoardKind.Grid);
+                overlay.UpdateOptions(o => o.SnapToGrid = true);
+            }, () => overlay.CurrentBoard == BoardKind.Grid);
 
-        reg.Register(new()
-        {
-            Id = "doublearrow",
-            Name = "Double-Headed Arrow",
-            Category = CapabilityCategory.Shapes,
-            Description = "Bidirectional connector arrow",
-            IconKey = "Fluent.DoubleArrow.Regular",
-            SearchTags = ["double", "arrow", "both", "bidirectional"],
-            Execute = () =>
+        // ---------------------------------------------------------------- Tools & System
+        Add("tools.capability_centre", "Open Capability Centre", CapabilityCategory.Tools, "Browse, search, and launch every command across all categories", "Compass", "F10",
+            ["commands", "hub", "all tools", "directory"], () => toolbar.Dispatcher.BeginInvoke(toolbar.OpenCapabilityCentre));
+        Add("tools.command_palette", "Command Palette Quick Launcher", CapabilityCategory.Tools, "Fuzzy-search any tool, shape, mode, or presenter function instantly", "Search", "Ctrl+Shift+P / Ctrl+K",
+            ["palette", "quick open", "spotlight search", "run"], () => toolbar.Dispatcher.BeginInvoke(toolbar.OpenCommandPalette));
+        Add("tools.radial_menu", "Quick Radial Pie Menu", CapabilityCategory.Tools, "Circular tool wheel spawned directly at cursor location", "PieChart", "Middle-Click",
+            ["radial", "pie menu", "wheel", "fast switch"], () => toolbar.Dispatcher.BeginInvoke(toolbar.OpenRadialMenu));
+        Add("tools.orientation_toggle", "Flip Toolbar Orientation", CapabilityCategory.Tools, "Toggle floating toolbar layout between horizontal and vertical", "RotateCw", "Ctrl+Shift+O",
+            ["vertical", "horizontal", "flip", "orient toolbar"], () => toolbar.Dispatcher.BeginInvoke(toolbar.ToggleOrientation));
+        Add("tools.settings", "InkIt Settings Editor", CapabilityCategory.Tools, "820x620 configuration hub for appearance, hotkeys, and profiles", "Settings", "Ctrl+,",
+            ["settings", "config", "preferences", "hotkey rebind"], () => toolbar.Dispatcher.BeginInvoke(toolbar.OpenSettings));
+        Add("tools.emergency_stop", "Emergency Release Dismissal", CapabilityCategory.Tools, "Protected global release hook dismissing all active overlays immediately", "ShieldAlert", "Alt+Shift+X",
+            ["emergency", "abort", "kill overlay", "reset", "protected hotkey"], toolbar.EmergencyRelease);
+
+        // ---------------------------------------------------------------- InkIt desktop extras
+        Add("canvas.snap_toggle", "Toggle Snap-to-Grid", CapabilityCategory.Board, "Lock strokes, shapes, text and markers to the alignment grid", "Magnet", "Ctrl+Shift+G",
+            ["snap", "grid", "magnet", "align"], () =>
             {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.DoubleArrow;
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "line",
-            Name = "Line",
-            Category = CapabilityCategory.Shapes,
-            Description = "Clean straight line segment",
-            IconKey = "Fluent.Line.Regular",
-            SearchTags = ["line", "straight", "rule"],
-            Execute = () =>
+                overlay.UpdateOptions(o => o.SnapToGrid = !o.SnapToGrid);
+                Toast.Show(s.SnapToGrid ? $"Snap-to-Grid Active ({s.GridSize}px)" : "Snap-to-Grid Disabled");
+            }, () => s.SnapToGrid);
+        Add("canvas.grid_settings", "Grid & Alignment", CapabilityCategory.Board, "Configure grid spacing, magnetic crosshairs and the engineering grid", "Crosshair", null,
+            ["grid settings", "spacing", "crosshair", "alignment"], () => toolbar.ShowInspector("grid"));
+        Add("pen.pencil", "Pencil", CapabilityCategory.Annotate, "Textured graphite sketch strokes", "Pen", null,
+            ["pencil", "sketch", "graphite"], () => { overlay.SetPenMode(PenMode.Pencil); toolbar.RememberPenMode(PenMode.Pencil); });
+        Add("pen.marker", "Marker Pen", CapabilityCategory.Annotate, "Broad felt tip ink for bold emphasis", "Highlighter", null,
+            ["marker", "bold", "felt"], () => { overlay.SetPenMode(PenMode.Marker); toolbar.RememberPenMode(PenMode.Marker); });
+        Add("pen.dashed", "Dashed Ink", CapabilityCategory.Annotate, "Draw dashed annotation strokes", "Minus", null,
+            ["dashed", "dash", "broken"], () => { overlay.SetPenMode(PenMode.Dashed); toolbar.RememberPenMode(PenMode.Dashed); });
+        Add("present.halo", "Cursor Halo", CapabilityCategory.Present, "High-contrast ring around the mouse cursor with click pulses", "Circle", null,
+            ["halo", "ring", "cursor", "highlight"], () =>
             {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.Line;
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "rectangle",
-            Name = "Rectangle / Frame",
-            Category = CapabilityCategory.Shapes,
-            Description = "Bounding rectangle for framing code or UI elements",
-            IconKey = "Fluent.Rectangle.Regular",
-            Shortcut = "R",
-            SearchTags = ["rectangle", "box", "square", "frame"],
-            Execute = () =>
+                if (ctx.PointerEffects.Value.IsVisible) ctx.PointerEffects.Value.Hide();
+                else ctx.PointerEffects.Value.Show(new() { Spotlight = false, CursorHalo = true, ClickPulse = true });
+            });
+        Add("present.slide_next", "Slide Next", CapabilityCategory.Present, "Advance the PowerPoint / PDF presentation slide", "ChevronRight", null,
+            ["slide", "next", "powerpoint", "advance"], () => System.Windows.Forms.SendKeys.SendWait("{RIGHT}"));
+        Add("present.slide_prev", "Slide Previous", CapabilityCategory.Present, "Return to the previous presentation slide", "ChevronLeft", null,
+            ["slide", "previous", "powerpoint", "back"], () => System.Windows.Forms.SendKeys.SendWait("{LEFT}"));
+        Add("present.blank_curtain", "Blank Screen Curtain", CapabilityCategory.Present, "Black out the display for discussions without disconnecting the projector", "EyeOff", null,
+            ["curtain", "blank", "black", "hide"], () => ctx.Curtain.Value.Show(new() { Color = System.Windows.Media.Colors.Black }));
+        Add("screen.static_zoom", "Static Frozen Zoom", CapabilityCategory.Screen, "Freeze the screen and zoom in for detailed inspection", "ZoomIn", null,
+            ["static", "zoom", "freeze", "inspect"], toolbar.TriggerStaticZoom);
+        Add("screen.copy_desktop", "Copy Screen to Clipboard", CapabilityCategory.Screen, "Copy the full virtual desktop straight to the clipboard", "Copy", "PrintScreen",
+            ["screenshot", "copy", "clipboard"], () => { ctx.Capture.CopyDesktopToClipboard(); Toast.Show("Screenshot copied to clipboard!"); });
+        Add("screen.ocr", "OCR Screen Text", CapabilityCategory.Screen, "Select a screen region and extract its text with Windows OCR", "ScanText", null,
+            ["ocr", "recognize", "text", "extract"], async () =>
             {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.Rectangle;
-            },
-            IsActive = () => overlay.Settings.Tool == ToolKind.Shape && overlay.Settings.Shape == ShapeKind.Rectangle
-        });
-
-        reg.Register(new()
-        {
-            Id = "roundrect",
-            Name = "Rounded Rectangle",
-            Category = CapabilityCategory.Shapes,
-            Description = "Smooth rounded corner box",
-            IconKey = "Fluent.RoundRect.Regular",
-            SearchTags = ["rounded", "rectangle", "pill", "box"],
-            Execute = () =>
-            {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.RoundedRectangle;
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "ellipse",
-            Name = "Ellipse / Circle",
-            Category = CapabilityCategory.Shapes,
-            Description = "Oval or circular emphasis ring",
-            IconKey = "Fluent.Circle.Regular",
-            Shortcut = "O",
-            SearchTags = ["circle", "ellipse", "oval", "round"],
-            Execute = () =>
-            {
-                overlay.SetTool(ToolKind.Shape);
-                overlay.Settings.Shape = ShapeKind.Ellipse;
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "stepmarker",
-            Name = "Numbered Step Marker",
-            Category = CapabilityCategory.Shapes,
-            Description = "Click to place sequential numbers (1, 2, 3...) for tutorial steps",
-            IconKey = "Fluent.TextNumberFormat.Regular",
-            Shortcut = "1",
-            SearchTags = ["number", "step", "marker", "sequence", "tutorial"],
-            Execute = () =>
-            {
-                overlay.SetTool(ToolKind.NumberMarker);
-            },
-            IsActive = () => overlay.Settings.Tool == ToolKind.NumberMarker
-        });
-
-        reg.Register(new()
-        {
-            Id = "text",
-            Name = "Text / Callout",
-            Category = CapabilityCategory.Shapes,
-            Description = "Inline typography text annotations with background styling",
-            IconKey = "Fluent.Text.Regular",
-            Shortcut = "T",
-            SearchTags = ["text", "font", "type", "label", "words"],
-            Execute = () => overlay.SetTool(ToolKind.Text),
-            IsActive = () => overlay.Settings.Tool == ToolKind.Text
-        });
-
-        // -------------------------------------------------------------
-        // 3. PRESENT (Category: Present)
-        // -------------------------------------------------------------
-        reg.Register(new()
-        {
-            Id = "present",
-            Name = "Present Hub",
-            Category = CapabilityCategory.Present,
-            Description = "Audience focus tools: laser, spotlight, click pulse, code band",
-            IconKey = "Fluent.Target.Regular",
-            Shortcut = "L",
-            SearchTags = ["present", "laser", "spotlight", "focus"],
-            Execute = () =>
-            {
-                overlay.SetTool(ToolKind.Laser);
-                onInspectCategory?.Invoke("laser");
-            },
-            IsActive = () => overlay.Settings.Tool == ToolKind.Laser
-        });
-
-        reg.Register(new()
-        {
-            Id = "laser",
-            Name = "Laser Pointer",
-            Category = CapabilityCategory.Present,
-            Description = "Glowing Keynote-grade laser dot with subtle trailing bloom",
-            IconKey = "Fluent.Laser.Regular",
-            Shortcut = "Ctrl+L",
-            SearchTags = ["laser", "pointer", "dot", "trail"],
-            Execute = () => overlay.SetTool(ToolKind.Laser),
-            IsActive = () => overlay.Settings.Tool == ToolKind.Laser
-        });
-
-        reg.Register(new()
-        {
-            Id = "present.spotlight",
-            Name = "Screen Spotlight",
-            Category = CapabilityCategory.Present,
-            Description = "Dims the screen with a circular light following the cursor",
-            IconKey = "Fluent.Circle.Regular",
-            Shortcut = "M",
-            SearchTags = ["spotlight", "dim", "focus", "dark", "present"],
-            Execute = () => overlay.SetTool(ToolKind.Spotlight),
-            IsActive = () => overlay.Settings.Tool == ToolKind.Spotlight
-        });
-
-        reg.Register(new()
-        {
-            Id = "halo",
-            Name = "Cursor Halo",
-            Category = CapabilityCategory.Present,
-            Description = "High-contrast colored ring around the mouse cursor",
-            IconKey = "Fluent.Circle.Regular",
-            SearchTags = ["halo", "ring", "cursor", "highlight"],
-            Execute = () =>
-            {
-                if (pointerEffects.Value.IsVisible) pointerEffects.Value.Hide();
-                else pointerEffects.Value.Show(new() { Spotlight = false, CursorHalo = true, ClickPulse = true });
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "codefocus",
-            Name = "Code Focus Band",
-            Category = CapabilityCategory.Present,
-            Description = "Horizontal highlight slit that dims lines above and below in code/terminals",
-            IconKey = "Fluent.Crop.Regular",
-            Shortcut = "F",
-            SearchTags = ["code", "focus", "band", "line", "terminal", "slit"],
-            Execute = () => codeFocus.Value.Toggle(overlay.Settings.CodeFocusBandHeight, overlay.Settings.CodeFocusDimOpacity),
-            IsActive = () => codeFocus.IsValueCreated && codeFocus.Value.IsVisible
-        });
-
-        reg.Register(new()
-        {
-            Id = "clickvis",
-            Name = "Mouse Click Visualizer",
-            Category = CapabilityCategory.Present,
-            Description = "Visual pulse ripples when clicking mouse during demos",
-            IconKey = "Fluent.CursorClick.Regular",
-            SearchTags = ["click", "ripple", "visualizer", "mouse"],
-            Execute = () =>
-            {
-                overlay.Settings.ClickVisualizerEnabled = !overlay.Settings.ClickVisualizerEnabled;
-                if (overlay.Settings.ClickVisualizerEnabled)
-                    pointerEffects.Value.Show(new() { ClickPulse = true, LaserTrail = false });
-                else
-                    pointerEffects.Value.Hide();
-            },
-            IsActive = () => overlay.Settings.ClickVisualizerEnabled
-        });
-
-        reg.Register(new()
-        {
-            Id = "keyvis",
-            Name = "Keyboard Shortcut Visualizer",
-            Category = CapabilityCategory.Present,
-            Description = "Floating HUD displaying pressed shortcut keys (e.g. Ctrl+C, F5)",
-            IconKey = "Fluent.Desktop.Regular",
-            Shortcut = "K",
-            SearchTags = ["keyboard", "key", "shortcut", "hud", "keys"],
-            Execute = () => keyVisualizer.Value.Toggle(),
-            IsActive = () => keyVisualizer.IsValueCreated && keyVisualizer.Value.IsEnabled
-        });
-
-        reg.Register(new()
-        {
-            Id = "breaktimer",
-            Name = "Presentation Timer / Clock",
-            Category = CapabilityCategory.Present,
-            Description = "Countdown break timer for workshop pauses and deadlines",
-            IconKey = "Fluent.Clock.Regular",
-            SearchTags = ["timer", "clock", "countdown", "break", "pause"],
-            Execute = () => breakTimer.Value.Start(TimeSpan.FromMinutes(10))
-        });
-
-        reg.Register(new()
-        {
-            Id = "curtain",
-            Name = "Screen Curtain",
-            Category = CapabilityCategory.Present,
-            Description = "Blanks the display temporarily for discussions without disconnecting projector",
-            IconKey = "Fluent.EyeOff.Regular",
-            SearchTags = ["curtain", "blank", "black", "hide"],
-            Execute = () => curtain.Value.Show(new() { Color = System.Windows.Media.Colors.Black })
-        });
-
-        reg.Register(new()
-        {
-            Id = "demotype",
-            Name = "DemoType Simulation",
-            Category = CapabilityCategory.Present,
-            Description = "Simulates authentic human typing into target editors",
-            IconKey = "Fluent.Text.Regular",
-            SearchTags = ["type", "demo", "automated", "typing"],
-            Execute = () => demoType.Value.Open("Console.WriteLine(\"ScreenCanvas Trainer Demo\");")
-        });
-
-        reg.Register(new()
-        {
-            Id = "slidenext",
-            Name = "Slide Next",
-            Category = CapabilityCategory.Present,
-            Description = "Advances PowerPoint / PDF presentation slide",
-            IconKey = "Fluent.ArrowRight.Regular",
-            SearchTags = ["slide", "next", "powerpoint", "advance"],
-            Execute = () => System.Windows.Forms.SendKeys.SendWait("{RIGHT}")
-        });
-
-        reg.Register(new()
-        {
-            Id = "slideprev",
-            Name = "Slide Previous",
-            Category = CapabilityCategory.Present,
-            Description = "Moves to previous PowerPoint / PDF presentation slide",
-            IconKey = "Fluent.ArrowUndo.Regular",
-            SearchTags = ["slide", "previous", "powerpoint", "back"],
-            Execute = () => System.Windows.Forms.SendKeys.SendWait("{LEFT}")
-        });
-
-        // -------------------------------------------------------------
-        // 4. SCREEN (Category: Screen)
-        // -------------------------------------------------------------
-        reg.Register(new()
-        {
-            Id = "zoom",
-            Name = "Live Zoom",
-            Category = CapabilityCategory.Screen,
-            Description = "Hardware-accelerated live desktop magnification with pan",
-            IconKey = "Fluent.ZoomIn.Regular",
-            Shortcut = "Z",
-            SearchTags = ["zoom", "magnify", "live", "scale"],
-            Execute = () =>
-            {
-                if (zoom.Value.State != ZoomState.Inactive) zoom.Value.Reset();
-                else zoom.Value.TrySetLiveZoom(2.0, new System.Windows.Point(SystemParameters.PrimaryScreenWidth / 2, SystemParameters.PrimaryScreenHeight / 2));
-            },
-            IsActive = () => zoom.IsValueCreated && zoom.Value.State != ZoomState.Inactive
-        });
-
-        reg.Register(new()
-        {
-            Id = "staticzoom",
-            Name = "Static Frozen Zoom",
-            Category = CapabilityCategory.Screen,
-            Description = "Freeze screen and zoom in for detailed inspection",
-            IconKey = "Fluent.ZoomIn.Regular",
-            SearchTags = ["static", "zoom", "freeze", "inspect"],
-            Execute = () => staticZoom.Value.Show(2.0)
-        });
-
-        reg.Register(new()
-        {
-            Id = "freeze",
-            Name = "Freeze + Annotate",
-            Category = CapabilityCategory.Screen,
-            Description = "Freeze desktop frame and immediately draw annotations over it",
-            IconKey = "Fluent.Snowflake.Regular",
-            Shortcut = "Ctrl+F",
-            SearchTags = ["freeze", "pause", "frame", "draw", "hold"],
-            Execute = () =>
-            {
-                freeze.Value.Freeze();
-                overlay.SetTool(ToolKind.Pen);
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "capture.screen",
-            Name = "Capture Screen",
-            Category = CapabilityCategory.Screen,
-            Description = "Full virtual desktop snapshot copied to clipboard",
-            IconKey = "Fluent.Camera.Regular",
-            Shortcut = "PrintScreen",
-            SearchTags = ["screenshot", "snip", "capture", "copy"],
-            Execute = () => capture.CopyDesktopToClipboard()
-        });
-
-        reg.Register(new()
-        {
-            Id = "capture.region",
-            Name = "Region Snip",
-            Category = CapabilityCategory.Screen,
-            Description = "Crosshair rectangular region capture to clipboard",
-            IconKey = "Fluent.Crop.Regular",
-            Shortcut = "Ctrl+Shift+S",
-            SearchTags = ["snip", "crop", "region", "area"],
-            Execute = () =>
-            {
-                var bmp = capture.CaptureInteractiveRegion();
-                if (bmp is not null) capture.CopyToClipboard(bmp);
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "ocr.region",
-            Name = "OCR Screen Text",
-            Category = CapabilityCategory.Screen,
-            Description = "Select screen region and extract text via Windows native OCR",
-            IconKey = "Fluent.Text.Regular",
-            SearchTags = ["ocr", "recognize", "text", "extract"],
-            Execute = async () =>
-            {
-                var ocr = new ScreenCanvas.Ocr.LocalOcrService();
-                var bmp = capture.CaptureInteractiveRegion();
-                if (bmp is not null)
+                var bmp = ctx.Capture.CaptureInteractiveRegion();
+                if (bmp is null) return;
+                var result = await new ScreenCanvas.Ocr.LocalOcrService().RecognizeAsync(bmp);
+                if (!string.IsNullOrEmpty(result.Text))
                 {
-                    var res = await ocr.RecognizeAsync(bmp);
-                    if (!string.IsNullOrEmpty(res.Text)) System.Windows.Clipboard.SetText(res.Text);
+                    System.Windows.Clipboard.SetText(result.Text);
+                    Toast.Show("Recognised text copied to clipboard");
                 }
-            }
-        });
-
-        // -------------------------------------------------------------
-        // 5. PRIVACY (Category: Privacy)
-        // -------------------------------------------------------------
-        reg.Register(new()
-        {
-            Id = "privacy.blackout",
-            Name = "Blackout Region",
-            Category = CapabilityCategory.Privacy,
-            Description = "Cover confidential keys, emails, or credentials with black box",
-            IconKey = "Fluent.EyeOff.Regular",
-            SearchTags = ["privacy", "blackout", "cover", "hide", "censor"],
-            Execute = () => blackout.Value.ShowInteractive()
-        });
-
-        // -------------------------------------------------------------
-        // 6. BOARD (Category: Board)
-        // -------------------------------------------------------------
-        reg.Register(new()
-        {
-            Id = "whiteboard",
-            Name = "Whiteboard",
-            Category = CapabilityCategory.Board,
-            Description = "Clean full-screen white canvas for diagramming and teaching",
-            IconKey = "Fluent.Whiteboard.Regular",
-            Shortcut = "W",
-            SearchTags = ["whiteboard", "white", "canvas", "sketch"],
-            Execute = () =>
-            {
-                overlay.SetBoard(System.Windows.Media.Colors.White);
-                overlay.SetTool(ToolKind.Pen);
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "blackboard",
-            Name = "Blackboard",
-            Category = CapabilityCategory.Board,
-            Description = "Dark matte canvas for high-contrast teaching notes",
-            IconKey = "Fluent.Board.Regular",
-            Shortcut = "B",
-            SearchTags = ["blackboard", "black", "dark", "chalkboard"],
-            Execute = () =>
-            {
-                overlay.SetBoard(System.Windows.Media.Color.FromRgb(24, 24, 27));
-                overlay.SetTool(ToolKind.Pen);
-            }
-        });
-
-        reg.Register(new()
-        {
-            Id = "transparentboard",
-            Name = "Clear Canvas Overlay",
-            Category = CapabilityCategory.Board,
-            Description = "Return to transparent desktop annotation surface",
-            IconKey = "Fluent.Desktop.Regular",
-            SearchTags = ["transparent", "desktop", "clear", "surface"],
-            Execute = () => overlay.SetBoard(null)
-        });
-
-        // -------------------------------------------------------------
-        // 7. TOOLS & NAVIGATION (Category: Tools)
-        // -------------------------------------------------------------
-        reg.Register(new()
-        {
-            Id = "commandpalette",
-            Name = "Command Palette",
-            Category = CapabilityCategory.Tools,
-            Description = "Search and execute any tool, preset or setting instantly",
-            IconKey = "Fluent.Search.Regular",
-            Shortcut = "Ctrl+Shift+P",
-            SearchTags = ["palette", "command", "search", "spotlight", "find"],
-            Execute = () => onOpenCommandPalette?.Invoke()
-        });
-
-        reg.Register(new()
-        {
-            Id = "radialmenu",
-            Name = "Radial Quick Menu",
-            Category = CapabilityCategory.Tools,
-            Description = "Circular HUD menu around cursor for rapid tool switching",
-            IconKey = "Fluent.Circle.Regular",
-            Shortcut = "` (Grave)",
-            SearchTags = ["radial", "pie", "menu", "quick", "wheel"],
-            Execute = () => onOpenRadialMenu?.Invoke()
-        });
-
-        reg.Register(new()
-        {
-            Id = "settings",
-            Name = "Preferences & Settings",
-            Category = CapabilityCategory.Tools,
-            Description = "Configure hotkeys, colors, appearance, and display parameters",
-            IconKey = "Fluent.Settings.Regular",
-            Shortcut = "Ctrl+,",
-            SearchTags = ["settings", "preferences", "config", "options"],
-            Execute = () => onOpenSettings?.Invoke()
-        });
-
-        reg.Register(new()
-        {
-            Id = "orientation",
-            Name = "Toggle Horizontal / Vertical",
-            Category = CapabilityCategory.Tools,
-            Description = "Switch toolbar between horizontal bar and vertical strip",
-            IconKey = "Fluent.Shapes.Regular",
-            SearchTags = ["horizontal", "vertical", "orientation", "rotate", "layout"],
-            Execute = () => onToggleOrientation?.Invoke()
-        });
+            });
+        Add("tools.exit", "Exit InkIt", CapabilityCategory.Tools, "Close every overlay and quit InkIt", "Power", null,
+            ["exit", "quit", "close"], toolbar.ExitApplication);
 
         return reg;
     }

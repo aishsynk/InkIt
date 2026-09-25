@@ -19,9 +19,18 @@ public sealed class HotkeyConfiguration
         new("Toggle drawing", ModifierKeys.Control | ModifierKeys.Shift, Key.D2),
         new("Undo", ModifierKeys.Control | ModifierKeys.Shift, Key.Z),
         new("Clear", ModifierKeys.Control | ModifierKeys.Shift, Key.Delete),
+        new("Toggle snap-to-grid", ModifierKeys.Control | ModifierKeys.Shift, Key.G),
         new("Capture region", ModifierKeys.Control | ModifierKeys.Shift, Key.D4),
         new("Toggle zoom", ModifierKeys.Control | ModifierKeys.Shift, Key.D5)
     ];
+
+    /// <summary>Adds default bindings for actions introduced after the settings file was written.</summary>
+    public void EnsureDefaults()
+    {
+        foreach (var binding in CreateDefaults())
+            if (Bindings.All(b => !string.Equals(b.Action, binding.Action, StringComparison.OrdinalIgnoreCase)))
+                Bindings.Add(binding);
+    }
 
     public HotkeyConflict? Validate(HotkeyBinding candidate)
     {

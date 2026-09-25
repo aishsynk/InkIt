@@ -1,30 +1,33 @@
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
+using System.Windows.Interop;
 using System.Windows.Threading;
-using Brushes = System.Windows.Media.Brushes;
-using Color = System.Windows.Media.Color;
+using ScreenCanvas.Interop;
+using ScreenCanvas.UI;
+using ScreenCanvas.UI.Controls;
+using ScreenCanvas.UI.Theme;
+using Button = System.Windows.Controls.Button;
+using Colors = System.Windows.Media.Colors;
 
 namespace ScreenCanvas.Presentation;
 
+/// <summary>Presenter break timer: a floating top-right countdown widget (design: PresenterHUD break timer).</summary>
 public sealed class BreakTimerService : IDisposable
 {
-    private BreakTimerWindow? _window;
+    private BreakTimerWidget? _window;
     public bool IsRunning => _window?.IsRunning == true;
     public bool IsPaused => _window?.IsPaused == true;
     public TimeSpan Remaining => _window?.Remaining ?? TimeSpan.Zero;
     public event EventHandler? Completed;
 
-    public void Start(TimeSpan duration, string? message = null)
+    public void Start(TimeSpan duration, int resetMinutes = 5)
     {
         if (duration <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(duration));
         EmergencyStop();
-        _window = new BreakTimerWindow(duration, message);
+        _window = new BreakTimerWidget(duration, TimeSpan.FromMinutes(resetMinutes));
         _window.Completed += (_, _) => Completed?.Invoke(this, EventArgs.Empty);
         _window.Closed += (_, _) => _window = null;
         _window.Show();
-        _window.Activate();
-        _window.Start();
     }
 
     public void Pause() => _window?.Pause();
@@ -34,11 +37,14 @@ public sealed class BreakTimerService : IDisposable
     public void Dispose() => EmergencyStop();
 }
 
-internal sealed class BreakTimerWindow : EmergencySafeWindow
+internal sealed class BreakTimerWidget : Window, IChromeHost
 {
-    private readonly TimeSpan _duration;
-    private readonly DispatcherTimer _timer;
+    private readonly TimeSpan _resetDuration;
+    private readonly DispatcherTimer _timer = new(DispatcherPriority.Normal) { Interval = TimeSpan.FromMilliseconds(250) };
     private readonly TextBlock _clock;
+    private readonly Button _pauseButton;
+    private readonly LucideIcon _pauseIcon = new("Pause", 14);
+    private readonly Border _card;
     private DateTimeOffset _deadline;
 
     internal bool IsRunning => _timer.IsEnabled;
@@ -46,70 +52,76 @@ internal sealed class BreakTimerWindow : EmergencySafeWindow
     internal TimeSpan Remaining { get; private set; }
     internal event EventHandler? Completed;
 
-    internal BreakTimerWindow(TimeSpan duration, string? message)
+    internal BreakTimerWidget(TimeSpan duration, TimeSpan resetDuration)
     {
-        _duration = duration;
+        _resetDuration = resetDuration;
         Remaining = duration;
-        Left = SystemParameters.VirtualScreenLeft;
-        Top = SystemParameters.VirtualScreenTop;
-        Width = SystemParameters.VirtualScreenWidth;
-        Height = SystemParameters.VirtualScreenHeight;
-        Background = new SolidColorBrush(Color.FromRgb(14, 17, 24));
+        WindowStyle = WindowStyle.None;
+        AllowsTransparency = true;
+        Background = System.Windows.Media.Brushes.Transparent;
+        ShowInTaskbar = false;
+        Topmost = true;
+        ShowActivated = false;
+        ResizeMode = ResizeMode.NoResize;
+        SizeToContent = SizeToContent.WidthAndHeight;
+        Title = "InkIt Break Timer";
 
-        _clock = new TextBlock
-        {
-            FontSize = 112,
-            FontWeight = FontWeights.SemiBold,
-            Foreground = Brushes.White,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-            TextAlignment = TextAlignment.Center
-        };
-        var messageBlock = new TextBlock
-        {
-            Text = string.IsNullOrWhiteSpace(message) ? "Break time" : message,
-            FontSize = 30,
-            Foreground = new SolidColorBrush(Color.FromRgb(190, 198, 214)),
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-            TextAlignment = TextAlignment.Center,
-            TextWrapping = TextWrapping.Wrap,
-            MaxWidth = 900,
-            Margin = new Thickness(0, 18, 0, 0)
-        };
-        var hint = new TextBlock
-        {
-            Text = "Esc or Ctrl+Shift+F12 to stop",
-            Foreground = new SolidColorBrush(Color.FromRgb(125, 135, 155)),
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-            Margin = new Thickness(0, 32, 0, 0)
-        };
-        Content = new StackPanel
-        {
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
-            VerticalAlignment = System.Windows.VerticalAlignment.Center,
-            Children = { _clock, messageBlock, hint }
-        };
-        _timer = new DispatcherTimer(DispatcherPriority.Normal) { Interval = TimeSpan.FromMilliseconds(100) };
-        _timer.Tick += OnTimerTick;
-        Closed += OnClosed;
-        RenderTime();
-    }
+        _clock = DK.Text("00:00", 20, "Ink.Text", FontWeights.Bold, mono: true);
+        var tile = DK.Surface(new LucideIcon("Timer", 20) { Foreground = Tw.B(Tw.Blue400) }, Tw.B(Tw.Blue500, 0.2), Tw.B(Colors.Transparent), 12, new Thickness(8), 0);
+        var labels = DK.V(0, DK.Caps("Break Timer", 10, "Ink.Text400", FontWeights.Normal), _clock);
+        ((TextBlock)labels.Children[0]).FontFamily = DK.Mono;
 
-    internal void Start()
-    {
-        Remaining = _duration;
-        IsPaused = false;
+        _pauseButton = DK.Button(_pauseIcon, Tw.B(Colors.Transparent), "Ink.Text300", "Ink.Hover", "Ink.Text", 8, new Thickness(6));
+        _pauseButton.ToolTip = "Pause Timer";
+        _pauseButton.Click += (_, _) => { if (IsPaused) Resume(); else Pause(); };
+        var reset = DK.IconButton("RotateCcw", 14, "Ink.Text300", "Ink.Text", "Ink.Hover", 6, 8, $"Reset to {resetDuration.TotalMinutes:0} Minutes");
+        reset.Click += (_, _) => { Remaining = _resetDuration; _deadline = DateTimeOffset.UtcNow + Remaining; if (!IsPaused) _timer.Start(); Render(); };
+        var close = DK.IconButton("X", 14, "Ink.Text400", Tw.B(Tw.Red300), Tw.B(Tw.Red950, 0.6), 6, 8, "Close Timer");
+        close.Click += (_, _) => Close();
+        var controls = new Border { BorderThickness = new Thickness(1, 0, 0, 0), Padding = new Thickness(8, 0, 0, 0), Child = DK.H(4, _pauseButton, reset, close) };
+        controls.SetResourceReference(Border.BorderBrushProperty, "Ink.Divider");
+
+        _card = DK.Surface(DK.H(12, tile, labels, controls), "Ink.Surface", "Ink.BorderStrong", 16, new Thickness(12));
+        _card.Margin = new Thickness(20, 12, 20, 28);
+        _card.Effect = DK.Shadow(40, 14, 0.5);
+        Content = _card;
+
+        _timer.Tick += (_, _) => Tick();
+        Closed += (_, _) => _timer.Stop();
+        Loaded += (_, _) =>
+        {
+            var area = SystemParameters.WorkArea;
+            Left = area.Right - ActualWidth - 4;
+            Top = area.Top + 44;
+        };
         _deadline = DateTimeOffset.UtcNow + Remaining;
         _timer.Start();
-        RenderTime();
+        Render();
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        var handle = new WindowInteropHelper(this).Handle;
+        var style = NativeMethods.GetWindowLong(handle, NativeMethods.GwlExStyle);
+        NativeMethods.SetWindowLong(handle, NativeMethods.GwlExStyle, style | NativeMethods.WsExToolWindow | NativeMethods.WsExNoActivate);
+    }
+
+    public bool IsPointOverChrome(System.Windows.Point screenPixelPoint)
+    {
+        if (!IsVisible || PresentationSource.FromVisual(_card) is null) return false;
+        var topLeft = _card.PointToScreen(new System.Windows.Point(0, 0));
+        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(_card);
+        return new Rect(topLeft.X, topLeft.Y, _card.ActualWidth * dpi.DpiScaleX, _card.ActualHeight * dpi.DpiScaleY).Contains(screenPixelPoint);
     }
 
     internal void Pause()
     {
-        if (!_timer.IsEnabled) return;
-        Remaining = MaxZero(_deadline - DateTimeOffset.UtcNow);
+        if (IsPaused) return;
+        Remaining = Max0(_deadline - DateTimeOffset.UtcNow);
         _timer.Stop();
         IsPaused = true;
-        RenderTime();
+        Render();
     }
 
     internal void Resume()
@@ -118,42 +130,34 @@ internal sealed class BreakTimerWindow : EmergencySafeWindow
         IsPaused = false;
         _deadline = DateTimeOffset.UtcNow + Remaining;
         _timer.Start();
+        Render();
     }
 
     internal void Reset()
     {
         _timer.Stop();
-        Remaining = _duration;
+        Remaining = _resetDuration;
         IsPaused = true;
-        RenderTime();
+        Render();
     }
 
     private void Tick()
     {
-        Remaining = MaxZero(_deadline - DateTimeOffset.UtcNow);
-        RenderTime();
+        Remaining = Max0(_deadline - DateTimeOffset.UtcNow);
+        Render();
         if (Remaining > TimeSpan.Zero) return;
         _timer.Stop();
-        IsPaused = false;
         Completed?.Invoke(this, EventArgs.Empty);
-        Close();
+        Toast.Show("Break is over");
     }
 
-    private void RenderTime()
+    private void Render()
     {
-        var totalSeconds = Math.Max(0, (int)Math.Ceiling(Remaining.TotalSeconds));
-        _clock.Text = $"{totalSeconds / 60:00}:{totalSeconds % 60:00}";
+        var total = Math.Max(0, (int)Math.Ceiling(Remaining.TotalSeconds));
+        _clock.Text = $"{total / 60:00}:{total % 60:00}";
+        _pauseIcon.Kind = IsPaused ? "Play" : "Pause";
+        _pauseButton.ToolTip = IsPaused ? "Resume Timer" : "Pause Timer";
     }
 
-    private static TimeSpan MaxZero(TimeSpan value) => value < TimeSpan.Zero ? TimeSpan.Zero : value;
-
-    private void OnTimerTick(object? sender, EventArgs e) => Tick();
-
-    private void OnClosed(object? sender, EventArgs e)
-    {
-        _timer.Stop();
-        _timer.Tick -= OnTimerTick;
-        Closed -= OnClosed;
-        Completed = null;
-    }
+    private static TimeSpan Max0(TimeSpan value) => value < TimeSpan.Zero ? TimeSpan.Zero : value;
 }

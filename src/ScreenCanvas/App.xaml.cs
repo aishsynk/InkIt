@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using ScreenCanvas.Hotkeys;
 using ScreenCanvas.Overlay;
 using ScreenCanvas.UI;
@@ -17,22 +18,38 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        var settingsStore = new JsonSettingsStore();
+        // Developer switches: --settings <file> isolates settings, --no-global-hotkeys skips RegisterHotKey
+        // (used for QA while another InkIt instance owns the shortcuts); --qa-capture implies both.
+        var args = e.Args;
+        var qaCapture = args.Contains("--qa-capture");
+        var settingsIndex = Array.IndexOf(args, "--settings");
+        var settingsPath = settingsIndex >= 0 && settingsIndex + 1 < args.Length ? args[settingsIndex + 1]
+            : qaCapture ? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "InkIt-QA", "settings.json") : null;
+        var globalHotkeys = !qaCapture && !args.Contains("--no-global-hotkeys");
+        var settingsStore = new JsonSettingsStore(settingsPath);
         var startupSettings = settingsStore.LoadAsync().GetAwaiter().GetResult();
+        startupSettings.Hotkeys.EnsureDefaults();
+        if (startupSettings.MigrateToDesign()) settingsStore.SaveAsync(startupSettings).GetAwaiter().GetResult();
         ThemeManager.Initialize(startupSettings.Appearance.Theme);
         _overlays = new OverlayManager(startupSettings, settingsStore);
         _toolbar = new ToolbarWindow(_overlays, startupSettings, settingsStore);
+        MainWindow = _toolbar;
+        ToolTipService.SetIsEnabled(_toolbar, startupSettings.Toolbar.ShowTooltips);
         _hotkeys = new HotkeyManager(_toolbar);
         _hotkeys.EmergencyStop += (_, _) => EmergencyStop();
         _hotkeys.ToggleDrawing += (_, _) => _overlays.ToggleDrawing();
         _hotkeys.Undo += (_, _) => _overlays.Undo();
-        _hotkeys.Clear += (_, _) => _overlays.Clear();
+        _hotkeys.Clear += (_, _) => { _overlays.Clear(); Toast.Show("Overlay Canvas Cleared"); };
+        _hotkeys.ToggleSnap += (_, _) => _toolbar.Registry.Find("canvas.snap_toggle")?.Execute();
+        _hotkeys.CaptureRegion += (_, _) => _toolbar.CaptureRegionWithPreview();
+        _hotkeys.ToggleZoom += (_, _) => _toolbar.ToggleZoom();
         // Esc always ends the active tool (and closes any open palette) — see DECISIONS "Global Esc invariant".
         _hotkeys.EscapePressed += (_, _) => EndCurrentTool();
-        _toolbar.HotkeysChanged = config => _hotkeys.Reconfigure(config);
-        _hotkeys.RegisterDefaults(startupSettings.Hotkeys);
+        _toolbar.HotkeysChanged = config => { if (globalHotkeys) _hotkeys.Reconfigure(config); };
+        if (globalHotkeys) _hotkeys.RegisterDefaults(startupSettings.Hotkeys);
         _overlays.ToolChanged += (_, _) => UpdateEscapeState();
         _overlays.BoardChanged += (_, _) => UpdateEscapeState();
+        _overlays.OptionsChanged += (_, _) => UpdateEscapeState();
         _toolbar.TemporaryModeChanged += (_, active) => { _temporaryModeActive = active; UpdateEscapeState(); };
         _toolbar.PaletteStateChanged += (_, _) => UpdateEscapeState();
         UpdateEscapeState();
@@ -44,132 +61,52 @@ public partial class App : System.Windows.Application
             exit: () => Shutdown());
 
         _toolbar.Show();
+        if (_hotkeys.Unavailable.Count > 0)
+            Toast.Show("Hotkey in use by another app: " + string.Join(", ", _hotkeys.Unavailable));
 
-        if (e.Args.Length > 0 && e.Args[0] == "--qa-capture")
-        {
-            RunQaCapture(_toolbar, _overlays);
-            return;
-        }
+        if (qaCapture) RunQaCapture(_toolbar);
     }
 
-    private void RunQaCapture(ToolbarWindow toolbar, OverlayManager overlays)
+    /// <summary>Renders the toolbar and each inspector to artifacts/screenshots for visual QA.</summary>
+    private void RunQaCapture(ToolbarWindow toolbar)
     {
         var outDir = System.IO.Path.GetFullPath(@"artifacts/screenshots");
         System.IO.Directory.CreateDirectory(outDir);
 
-        System.Drawing.Bitmap CaptureElement(FrameworkElement elem)
+        void Save(Window window, string name)
         {
-            elem.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-            elem.Arrange(new Rect(elem.DesiredSize));
-            elem.UpdateLayout();
-
-            int w = Math.Max(1, (int)Math.Ceiling(elem.ActualWidth > 0 ? elem.ActualWidth : elem.DesiredSize.Width));
-            int h = Math.Max(1, (int)Math.Ceiling(elem.ActualHeight > 0 ? elem.ActualHeight : elem.DesiredSize.Height));
-
-            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(w, h, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
-            rtb.Render(elem);
-
-            var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
-            enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
-            using var ms = new System.IO.MemoryStream();
-            enc.Save(ms);
-            ms.Position = 0;
-            return new System.Drawing.Bitmap(ms);
+            window.UpdateLayout();
+            var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(window);
+            var w = Math.Max(1, (int)Math.Ceiling(window.ActualWidth * dpi.DpiScaleX));
+            var h = Math.Max(1, (int)Math.Ceiling(window.ActualHeight * dpi.DpiScaleY));
+            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(w, h, 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, System.Windows.Media.PixelFormats.Pbgra32);
+            rtb.Render(window);
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+            using var file = System.IO.File.Create(System.IO.Path.Combine(outDir, name));
+            encoder.Save(file);
         }
 
-        void SaveBitmap(System.Drawing.Bitmap bmp, string filename)
+        Dispatcher.BeginInvoke(() =>
         {
-            bmp.Save(System.IO.Path.Combine(outDir, filename), System.Drawing.Imaging.ImageFormat.Png);
-        }
-
-        // 1. Horizontal Toolbar
-        toolbar.ApplyOrientation(true);
-        toolbar.UpdateLayout();
-        using var bmpHoriz = CaptureElement(toolbar.ToolbarChrome);
-        SaveBitmap(bmpHoriz, "qa_horizontal_toolbar.png");
-
-        // 2. Vertical Toolbar
-        toolbar.ApplyOrientation(false);
-        toolbar.UpdateLayout();
-        using var bmpVert = CaptureElement(toolbar.ToolbarChrome);
-        SaveBitmap(bmpVert, "qa_vertical_toolbar.png");
-
-        // Restore Horizontal
-        toolbar.ApplyOrientation(true);
-        toolbar.UpdateLayout();
-
-        // 3. Composite Toolbar + Pen Inspector
-        var inspector = new InspectorWindow(overlays, toolbar);
-        inspector.ShowCategory("pen", toolbar.PenButton);
-        inspector.UpdateLayout();
-
-        void SaveComposite(string filename)
-        {
-            using var bmpTool = CaptureElement(toolbar.ToolbarChrome);
-            using var bmpInsp = CaptureElement(inspector.InspectorChrome);
-            int compW = Math.Max(bmpTool.Width, bmpInsp.Width);
-            int compH = bmpTool.Height + 8 + bmpInsp.Height;
-            using var comp = new System.Drawing.Bitmap(compW, compH);
-            using (var g = System.Drawing.Graphics.FromImage(comp))
+            toolbar.ApplyOrientation(true);
+            Save(toolbar, "qa_toolbar_horizontal.png");
+            toolbar.ApplyOrientation(false);
+            Save(toolbar, "qa_toolbar_vertical.png");
+            toolbar.ApplyOrientation(true);
+            foreach (var key in new[] { "pen", "shape", "color", "laser", "zoom", "board", "grid", "highlighter", "text", "more" })
             {
-                g.Clear(System.Drawing.Color.Transparent);
-                g.DrawImage(bmpTool, (compW - bmpTool.Width) / 2, 0);
-                g.DrawImage(bmpInsp, (compW - bmpInsp.Width) / 2, bmpTool.Height + 8);
+                toolbar.ShowInspector(key);
+                if (toolbar.OwnedWindows.OfType<InspectorWindow>().FirstOrDefault() is { } inspector)
+                {
+                    inspector.BeginAnimation(UIElement.OpacityProperty, null);
+                    inspector.Opacity = 1;
+                    Save(inspector, $"qa_inspector_{key}.png");
+                }
             }
-            SaveBitmap(comp, filename);
-        }
-
-        SaveComposite("qa_pen_inspector_teaching.png");
-
-        // 4. Composite Toolbar + Shapes Inspector
-        inspector.ShowCategory("shapes", toolbar.ShapesButton);
-        inspector.UpdateLayout();
-        SaveComposite("qa_shapes_inspector_markers.png");
-
-        // 5. Composite Toolbar + Highlighter Inspector
-        inspector.ShowCategory("highlighter", toolbar.HighlighterButton);
-        inspector.UpdateLayout();
-        SaveComposite("qa_highlighter_inspector.png");
-
-        // 6. Composite Toolbar + Zoom Inspector
-        inspector.ShowCategory("zoom", toolbar.ZoomButton);
-        inspector.UpdateLayout();
-        SaveComposite("qa_zoom_inspector.png");
-
-        // 7. Vertical Docked Companions (Side-by-Side)
-        toolbar.ApplyOrientation(false);
-        toolbar.UpdateLayout();
-
-        void SaveSideBySide(string filename)
-        {
-            using var bmpTool = CaptureElement(toolbar.ToolbarChrome);
-            using var bmpInsp = CaptureElement(inspector.InspectorChrome);
-            int compW = bmpTool.Width + 8 + bmpInsp.Width;
-            int compH = Math.Max(bmpTool.Height, bmpInsp.Height);
-            using var comp = new System.Drawing.Bitmap(compW, compH);
-            using (var g = System.Drawing.Graphics.FromImage(comp))
-            {
-                g.Clear(System.Drawing.Color.Transparent);
-                g.DrawImage(bmpTool, 0, (compH - bmpTool.Height) / 2);
-                g.DrawImage(bmpInsp, bmpTool.Width + 8, (compH - bmpInsp.Height) / 2);
-            }
-            SaveBitmap(comp, filename);
-        }
-
-        inspector.ShowCategory("pen", toolbar.PenButton);
-        inspector.UpdateLayout();
-        SaveSideBySide("qa_vertical_pen_docked.png");
-
-        inspector.ShowCategory("shapes", toolbar.ShapesButton);
-        inspector.UpdateLayout();
-        SaveSideBySide("qa_vertical_shapes_docked.png");
-
-        inspector.ShowCategory("more", toolbar.MoreButton);
-        inspector.UpdateLayout();
-        SaveSideBySide("qa_vertical_more_docked.png");
-
-        inspector.Close();
-        Shutdown();
+            toolbar.CloseMenus();
+            Shutdown();
+        }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
     }
 
     private void ShowToolbar()
@@ -181,7 +118,7 @@ public partial class App : System.Windows.Application
 
     private void EmergencyStop()
     {
-        _toolbar?.EndCurrentTool();
+        _toolbar?.EmergencyRelease();
         _overlays?.EmergencyStop();
         UpdateEscapeState();
     }
@@ -197,6 +134,7 @@ public partial class App : System.Windows.Application
         bool shouldEnable = _temporaryModeActive
             || _overlays?.IsDrawing == true
             || _overlays?.CurrentBoardColor != null
+            || _overlays?.Settings.CurtainProgress > 0
             || _toolbar?.IsPaletteOpen == true
             || _toolbar?.IsZoomActive == true;
 

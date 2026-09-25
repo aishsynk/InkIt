@@ -13,6 +13,10 @@ public sealed class HotkeyManager : IDisposable
     private const int UndoId = 0x5103;
     private const int ClearId = 0x5104;
     private const int EscapeId = 0x5105;
+    private const int SnapId = 0x5106;
+    private const int CaptureId = 0x5107;
+    private const int ZoomId = 0x5108;
+    private static readonly int[] AllIds = [0x5101, 0x5102, 0x5103, 0x5104, 0x5105, 0x5106, 0x5107, 0x5108];
     private readonly Window _owner;
     private HwndSource? _source;
     private nint _handle;
@@ -22,6 +26,11 @@ public sealed class HotkeyManager : IDisposable
     public event EventHandler? Undo;
     public event EventHandler? Clear;
     public event EventHandler? EscapePressed;
+    public event EventHandler? ToggleSnap;
+    public event EventHandler? CaptureRegion;
+    public event EventHandler? ToggleZoom;
+    /// <summary>Bindings that could not be registered because another app owns the shortcut.</summary>
+    public List<string> Unavailable { get; } = [];
     private bool _escapeRegistered;
 
     public HotkeyManager(Window owner) => _owner = owner;
@@ -37,7 +46,7 @@ public sealed class HotkeyManager : IDisposable
     public void Reconfigure(HotkeyConfiguration config)
     {
         if (_handle == nint.Zero) return;
-        foreach (var id in new[] { EmergencyId, ToggleDrawId, UndoId, ClearId, EscapeId })
+        foreach (var id in AllIds)
             NativeMethods.UnregisterHotKey(_handle, id);
         _escapeRegistered = false;
         RegisterFromConfiguration(config);
@@ -45,12 +54,17 @@ public sealed class HotkeyManager : IDisposable
 
     private void RegisterFromConfiguration(HotkeyConfiguration config)
     {
+        Unavailable.Clear();
         foreach (var binding in config.Bindings)
         {
             if (binding.IsEmpty) continue;
             var id = GetActionId(binding.Action);
             if (id is null) continue;
-            Register(id.Value, ToNativeModifiers(binding.Modifiers), binding.Key);
+            if (!Register(id.Value, ToNativeModifiers(binding.Modifiers), binding.Key))
+            {
+                if (id == EmergencyId) throw new Win32Exception($"The protected emergency hotkey {binding.DisplayText} is already in use.");
+                Unavailable.Add($"{binding.Action} ({binding.DisplayText})");
+            }
         }
     }
 
@@ -60,6 +74,9 @@ public sealed class HotkeyManager : IDisposable
         "Toggle drawing" => ToggleDrawId,
         "Undo" => UndoId,
         "Clear" => ClearId,
+        "Toggle snap-to-grid" => SnapId,
+        "Capture region" => CaptureId,
+        "Toggle zoom" => ZoomId,
         _ => null
     };
 
@@ -72,12 +89,8 @@ public sealed class HotkeyManager : IDisposable
         return result;
     }
 
-    private void Register(int id, uint modifiers, Key key)
-    {
-        var virtualKey = (uint)KeyInterop.VirtualKeyFromKey(key);
-        if (!NativeMethods.RegisterHotKey(_handle, id, modifiers, virtualKey))
-            throw new Win32Exception($"The default global hotkey for {key} is already in use.");
-    }
+    private bool Register(int id, uint modifiers, Key key) =>
+        NativeMethods.RegisterHotKey(_handle, id, modifiers, (uint)KeyInterop.VirtualKeyFromKey(key));
 
     public void SetEscapeEnabled(bool enabled)
     {
@@ -105,6 +118,9 @@ public sealed class HotkeyManager : IDisposable
             case UndoId: Undo?.Invoke(this, EventArgs.Empty); break;
             case ClearId: Clear?.Invoke(this, EventArgs.Empty); break;
             case EscapeId: EscapePressed?.Invoke(this, EventArgs.Empty); break;
+            case SnapId: ToggleSnap?.Invoke(this, EventArgs.Empty); break;
+            case CaptureId: CaptureRegion?.Invoke(this, EventArgs.Empty); break;
+            case ZoomId: ToggleZoom?.Invoke(this, EventArgs.Empty); break;
         }
         return nint.Zero;
     }
@@ -112,7 +128,7 @@ public sealed class HotkeyManager : IDisposable
     public void Dispose()
     {
         if (_handle == nint.Zero) return;
-        foreach (var id in new[] { EmergencyId, ToggleDrawId, UndoId, ClearId, EscapeId }) NativeMethods.UnregisterHotKey(_handle, id);
+        foreach (var id in AllIds) NativeMethods.UnregisterHotKey(_handle, id);
         _source?.RemoveHook(WindowProc);
     }
 }

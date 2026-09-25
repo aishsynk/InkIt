@@ -1,0 +1,386 @@
+using System.Diagnostics;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
+using ScreenCanvas.Hotkeys;
+using ScreenCanvas.Overlay;
+using ScreenCanvas.Settings;
+using ScreenCanvas.UI.Controls;
+using ScreenCanvas.UI.Theme;
+using Button = System.Windows.Controls.Button;
+using Colors = System.Windows.Media.Colors;
+using HorizontalAlignment = System.Windows.HorizontalAlignment;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using VerticalAlignment = System.Windows.VerticalAlignment;
+
+namespace ScreenCanvas.UI;
+
+/// <summary>InkIt Settings (820×620) - design: SettingsModal.tsx. Changes are saved as they are made.</summary>
+public sealed class SettingsWindow : ModalHost
+{
+    private enum Tab { Appearance, Toolbar, Hotkeys, Presentation, Profiles, Audit }
+
+    private readonly AppSettings _settings;
+    private readonly ISettingsStore _store;
+    private readonly IOverlayManager _overlay;
+    private readonly Action<HotkeyConfiguration>? _hotkeysChanged;
+    private readonly ToolbarWindow _toolbar;
+    private readonly StackPanel _nav = new();
+    private readonly ContentControl _content = new();
+    private readonly DispatcherTimer _cpuTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private Tab _tab = Tab.Appearance;
+    private string? _capturingAction;
+    private string _hotkeyStatus = string.Empty;
+    private TimeSpan _lastCpu;
+    private DateTime _lastSample;
+    private TextBlock? _cpuText;
+
+    public SettingsWindow(AppSettings settings, ISettingsStore store, IOverlayManager overlay, Action<HotkeyConfiguration>? hotkeysChanged, ToolbarWindow toolbar)
+        : base(closeOnBackdropClick: false)
+    {
+        _settings = settings;
+        _store = store;
+        _overlay = overlay;
+        _hotkeysChanged = hotkeysChanged;
+        _toolbar = toolbar;
+        Title = "InkIt Settings";
+
+        var subtitle = DK.H(8,
+            DK.H(4, new LucideIcon("Folder", 12) { Foreground = Tw.B(Tw.Blue400) }, DK.Text(@"%LOCALAPPDATA%\InkIt\settings.json", 11, Tw.B(Tw.Blue400), mono: true)),
+            DK.Text("·", 12, "Ink.Text400"),
+            DK.Text($"Schema v{settings.SchemaVersion}", 12, Tw.B(Tw.Emerald400)));
+        var header = Header("Settings", Tw.Blue400, "InkIt Settings (820×620)", subtitle);
+
+        var navHost = new Border { Width = 224, Padding = new Thickness(12), BorderThickness = new Thickness(0, 0, 1, 0), Child = _nav };
+        navHost.SetResourceReference(Border.BackgroundProperty, "Ink.Sunken");
+        navHost.SetResourceReference(Border.BorderBrushProperty, "Ink.Divider");
+        var scroll = new ScrollViewer
+        {
+            Style = (Style)FindResource("Ink.ScrollViewer"),
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Content = new Border { Padding = new Thickness(24), Child = _content }
+        };
+        var body = new DockPanel();
+        DockPanel.SetDock(navHost, Dock.Left);
+        body.Children.Add(navHost);
+        body.Children.Add(scroll);
+
+        var done = DK.Button(DK.Plain("Done", 12, FontWeights.Medium), Tw.B(Tw.Blue600), Tw.B(Colors.White), Tw.B(Tw.Blue500), Tw.B(Colors.White), 12, new Thickness(16, 6, 16, 6));
+        done.Click += (_, _) => Close();
+        var footer = Footer(DK.Text("Settings automatically save on change", 12, "Ink.Text400"), done);
+
+        var layout = new DockPanel();
+        DockPanel.SetDock(header, Dock.Top);
+        DockPanel.SetDock(footer, Dock.Bottom);
+        layout.Children.Add(header);
+        layout.Children.Add(footer);
+        layout.Children.Add(body);
+        AddCard(layout, 896, 620);
+
+        PreviewKeyDown += OnCaptureKey;
+        _cpuTimer.Tick += (_, _) => SampleCpu();
+        Closed += (_, _) => _cpuTimer.Stop();
+        Render();
+    }
+
+    private void Save() => _store.SaveAsync(_settings).GetAwaiter().GetResult();
+
+    private void Render()
+    {
+        _nav.Children.Clear();
+        foreach (var (tab, name, icon) in new[]
+                 {
+                     (Tab.Appearance, "Appearance", "Palette"), (Tab.Toolbar, "Toolbar & Presets", "Layout"),
+                     (Tab.Hotkeys, "Hotkeys (Protected)", "Keyboard"), (Tab.Presentation, "Spotlight & Focus", "Eye"),
+                     (Tab.Profiles, "Per-Tool Profiles", "Sliders"), (Tab.Audit, "System & CPU Audit", "Cpu")
+                 })
+        {
+            var active = _tab == tab;
+            var content = DK.IconLabel(icon, 16, name, 12, FontWeights.Medium, 10);
+            var button = active
+                ? DK.Button(content, Tw.B(Tw.Blue600), Tw.B(Colors.White), Tw.B(Tw.Blue600), Tw.B(Colors.White), 12, new Thickness(12, 8, 12, 8))
+                : DK.Button(content, Tw.B(Colors.Transparent), "Ink.Text400", Tw.B(Tw.Slate800, 0.6), "Ink.Text200", 12, new Thickness(12, 8, 12, 8));
+            if (active) button.Effect = DK.Shadow(6, 1, 0.3);
+            button.HorizontalContentAlignment = HorizontalAlignment.Left;
+            if (_nav.Children.Count > 0) button.Margin = new Thickness(0, 4, 0, 0);
+            button.Click += (_, _) => { _tab = tab; _capturingAction = null; Render(); };
+            _nav.Children.Add(button);
+        }
+        _cpuTimer.Stop();
+        _content.Content = _tab switch
+        {
+            Tab.Appearance => Appearance(),
+            Tab.Toolbar => ToolbarTab(),
+            Tab.Hotkeys => Hotkeys(),
+            Tab.Presentation => Presentation(),
+            Tab.Profiles => Profiles(),
+            _ => Audit()
+        };
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private static StackPanel Section(string title, UIElement? description, params UIElement[] body)
+    {
+        var header = DK.Text(title, 14, "Ink.Text", FontWeights.SemiBold);
+        header.Margin = new Thickness(0, 0, 0, 4);
+        var panel = DK.V(0, header);
+        if (description is FrameworkElement d) { d.Margin = new Thickness(0, 0, 0, 12); panel.Children.Add(d); }
+        foreach (var b in body) panel.Children.Add(b);
+        return panel;
+    }
+
+    private static Border Ruled(UIElement child)
+    {
+        var rule = DK.TopRule(child, 16);
+        rule.Margin = new Thickness(0, 24, 0, 0);
+        return rule;
+    }
+
+    private static TextBlock CodeNote(params (string Text, bool Code)[] parts) =>
+        DK.Rich(12, "Ink.Text400", parts.Select(p => (p.Text, p.Code ? (Paint?)"Ink.Code" : null, p.Code)).ToArray());
+
+    private static Button Choice(UIElement content, bool selected, Action click, Thickness padding)
+    {
+        var b = selected
+            ? DK.Button(content, "Ink.Selected", "Ink.Text", "Ink.Selected", "Ink.Text", 12, padding, Tw.B(Tw.Blue500), Tw.B(Tw.Blue500), 1)
+            : DK.Button(content, "Ink.Raised40", "Ink.Text300", "Ink.Hover", "Ink.Text300", 12, padding, "Ink.Divider", "Ink.Divider", 1);
+        b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        b.Click += (_, _) => click();
+        return b;
+    }
+
+    // ---------------------------------------------------------------- tabs
+
+    private UIElement Appearance()
+    {
+        var themes = new[] { AppTheme.Dark, AppTheme.Light, AppTheme.System }.Select(theme =>
+        {
+            var selected = _settings.Appearance.Theme == theme;
+            var check = new LucideIcon("Check", 14) { Foreground = Tw.B(Tw.Blue400), Visibility = selected ? Visibility.Visible : Visibility.Hidden };
+            var content = DK.Between(DK.Plain($"{theme} Theme", 12), check);
+            return (UIElement)Choice(content, selected, () =>
+            {
+                _settings.Appearance.Theme = theme;
+                ThemeManager.SetPreference(theme);
+                Save();
+                Render();
+            }, new Thickness(12));
+        }).ToList();
+
+        var dpiBox = DK.Surface(DK.Between(DK.Text("Sub-pixel vector DPI recalculation enabled", 12, "Ink.Text300"),
+                DK.Chip("Active", Tw.B(Tw.Emerald500, 0.2), Tw.B(Tw.Emerald300), Tw.B(Colors.Transparent), 10, 4, new Thickness(8, 2, 8, 2))),
+            "Ink.Raised40", "Ink.Divider", 12, new Thickness(12));
+
+        return DK.V(0,
+            Section("Theme Preferences", CodeNote(("Managed by ", false), ("ThemeManager.cs", true), (" via Windows registry query.", false)), DK.Columns(3, 12, themes)),
+            Ruled(Section("DPI Scaling Mode",
+                DK.Rich(12, "Ink.Text400", ("Declared in ", null, false), ("app.manifest", "Ink.Code", true), (" as ", null, false), ("PerMonitorV2", Tw.B(Tw.Emerald400), true), (".", null, false)),
+                dpiBox)));
+    }
+
+    private UIElement ToolbarTab()
+    {
+        var presets = Commands.PresetManager.Instance.Presets.Select(p =>
+        {
+            var content = DK.V(4, DK.Text(p.Name, 12, "Ink.Text", FontWeights.SemiBold), DK.Text(p.Description, 11, "Ink.Text400").Wrap());
+            return (UIElement)Choice(content, _settings.Toolbar.Preset == p.Id, () => { _toolbar.SetPreset(p.Id); Render(); }, new Thickness(12));
+        }).ToList();
+
+        var orientation = DK.H(12,
+            Choice(DK.Plain("Horizontal (Top / Bottom)", 12), _toolbar.IsHorizontal, () => { _toolbar.ApplyOrientation(true); Render(); }, new Thickness(16, 8, 16, 8)),
+            Choice(DK.Plain("Vertical (Left / Right)", 12), !_toolbar.IsHorizontal, () => { _toolbar.ApplyOrientation(false); Render(); }, new Thickness(16, 8, 16, 8)));
+        orientation.Margin = new Thickness(0, 8, 0, 0);
+
+        var s = _overlay.Settings;
+        var pill = DK.Between(DK.V(0, DK.Text("Windows Ink status pill", 12, "Ink.Text200", FontWeights.Medium),
+                DK.Text("Show the digitizer / snap status pill while a drawing tool is active", 11, "Ink.Text400")),
+            DK.Switch(s.ShowStatusPill, v => _overlay.UpdateOptions(o => o.ShowStatusPill = v), Tw.B(Tw.Blue600)));
+        var tooltips = DK.Between(DK.V(0, DK.Text("Toolbar tooltips", 12, "Ink.Text200", FontWeights.Medium),
+                DK.Text("Describe each tool and its shortcut on hover", 11, "Ink.Text400")),
+            DK.Switch(_settings.Toolbar.ShowTooltips, v => { _settings.Toolbar.ShowTooltips = v; ToolTipService.SetIsEnabled(_toolbar, v); Save(); }, Tw.B(Tw.Blue600)));
+        tooltips.Margin = new Thickness(0, 12, 0, 0);
+
+        return DK.V(0,
+            Section("Active Preset (PresetManager.cs)", DK.Text("Reconfigures the floating toolbar controls for educational lectures or technical demos.", 12, "Ink.Text400").Wrap(), DK.Columns(2, 12, presets)),
+            Ruled(Section("Toolbar Layout Orientation", null, orientation)),
+            Ruled(Section("Display", null, pill, tooltips)));
+    }
+
+    private UIElement Hotkeys()
+    {
+        var header = DK.Between(
+            DK.V(2, DK.Text("Global Hotkey Dispatcher", 14, "Ink.Text", FontWeights.SemiBold),
+                CodeNote(("Managed by ", false), ("HotkeyManager.cs", true), (" via Win32 ", false), ("RegisterHotKey", true), (". Click a shortcut to rebind it.", false))),
+            DK.Surface(DK.H(4, new LucideIcon("Shield", 12) { Foreground = Tw.B(Tw.Red400) }, DK.Text("Protected Alt+Shift+X", 10, Tw.B(Tw.Red300))),
+                Tw.B(Tw.Red950, 0.8), Tw.B(Tw.Red800), 999, new Thickness(8, 2, 8, 2)));
+        header.Margin = new Thickness(0, 0, 0, 16);
+
+        var table = new Grid();
+        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.3, GridUnitType.Star) });
+        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        void Cell(UIElement element, int row, int col, bool head)
+        {
+            var cell = new Border { Padding = new Thickness(10), Child = element, BorderThickness = new Thickness(0, 0, 0, 1) };
+            cell.SetResourceReference(Border.BackgroundProperty, head ? "Ink.Kbd950" : "Ink.Surface");
+            cell.SetResourceReference(Border.BorderBrushProperty, "Ink.Divider");
+            Grid.SetRow(cell, row);
+            Grid.SetColumn(cell, col);
+            table.Children.Add(cell);
+        }
+        table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Cell(DK.Text("Action Name", 11, "Ink.Text400", mono: true), 0, 0, true);
+        Cell(DK.Text("Assigned Keys", 11, "Ink.Text400", mono: true), 0, 1, true);
+        Cell(DK.Text("Status", 11, "Ink.Text400", mono: true), 0, 2, true);
+        var row = 1;
+        foreach (var binding in _settings.Hotkeys.Bindings)
+        {
+            table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Cell(DK.Text(binding.Action, 12, "Ink.Text", FontWeights.Medium), row, 0, false);
+            var capturing = _capturingAction == binding.Action;
+            var keysText = capturing ? "Press keys…" : binding.DisplayText.Replace(", ", "+").Replace("Control", "Ctrl");
+            var kbd = DK.Kbd(keysText, capturing ? Tw.B(Tw.Amber300) : Tw.B(Tw.Blue300), "Ink.Kbd950", capturing ? Tw.B(Tw.Amber500) : "Ink.BorderStrong", 12, new Thickness(8, 2, 8, 2));
+            FrameworkElement keysCell = kbd;
+            if (!binding.Protected)
+            {
+                var rebind = DK.Button(kbd, Tw.B(Colors.Transparent), "Ink.Text", Tw.B(Colors.Transparent), "Ink.Text", 4);
+                rebind.ToolTip = "Click, then press the new shortcut";
+                rebind.HorizontalAlignment = HorizontalAlignment.Left;
+                rebind.Click += (_, _) => { _capturingAction = binding.Action; _hotkeyStatus = string.Empty; Render(); Focus(); };
+                keysCell = rebind;
+            }
+            else kbd.HorizontalAlignment = HorizontalAlignment.Left;
+            Cell(keysCell, row, 1, false);
+            Cell(binding.Protected
+                ? DK.H(4, new LucideIcon("Shield", 12) { Foreground = Tw.B(Tw.Red400) }, DK.Text("Protected (Non-removable)", 12, Tw.B(Tw.Red400), FontWeights.SemiBold))
+                : DK.Text("Rebindable", 12, "Ink.Text400"), row, 2, false);
+            row++;
+        }
+        var frame = DK.Surface(table, Tw.B(Colors.Transparent), "Ink.Divider", 12, new Thickness(0));
+        frame.ClipToBounds = true;
+
+        var reset = DK.Button(DK.IconLabel("RotateCcw", 12, "Reset to defaults", 11, spacing: 4), Tw.B(Colors.Transparent), Tw.B(Tw.Blue400), Tw.B(Colors.Transparent), Tw.B(Tw.Blue300), 4);
+        reset.HorizontalAlignment = HorizontalAlignment.Left;
+        reset.Click += (_, _) => { _settings.Hotkeys.Reset(); CommitHotkeys(); };
+        var status = DK.Text(_hotkeyStatus, 12, Tw.B(Tw.Amber400)).Wrap();
+        var footer = DK.Between(reset, status);
+        footer.Margin = new Thickness(0, 12, 0, 0);
+        return DK.V(0, header, frame, footer);
+    }
+
+    private void OnCaptureKey(object sender, KeyEventArgs e)
+    {
+        if (_capturingAction is null) return;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        e.Handled = true;
+        if (key == Key.Escape) { _capturingAction = null; Render(); return; }
+        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin) return;
+        var original = _settings.Hotkeys.Bindings.First(b => b.Action == _capturingAction);
+        var candidate = original with { Key = key, Modifiers = Keyboard.Modifiers };
+        if (!_settings.Hotkeys.TrySet(candidate, out var conflict))
+        {
+            _hotkeyStatus = conflict!.Message;
+            Render();
+            return;
+        }
+        _capturingAction = null;
+        _hotkeyStatus = $"{candidate.Action} → {candidate.DisplayText}";
+        CommitHotkeys();
+    }
+
+    private void CommitHotkeys()
+    {
+        Save();
+        _hotkeysChanged?.Invoke(_settings.Hotkeys);
+        Render();
+    }
+
+    private UIElement Presentation()
+    {
+        var s = _overlay.Settings;
+        var radius = DK.SliderBlock("Default Lens Radius", 60, 350, 1, Math.Clamp(s.SpotlightRadius, 60, 350), v => $"{v:0}px", Tw.B(Tw.Amber400),
+            v => _overlay.UpdateOptions(o => o.SpotlightRadius = v));
+        ((Slider)radius.Children[1]).Foreground = Tw.B(Tw.Amber500);
+        var slit = DK.SliderBlock("Slit Viewport Height", 40, 300, 1, Math.Clamp(s.CodeFocusBandHeight, 40, 300), v => $"{v:0}px", Tw.B(Tw.Blue400),
+            v => _overlay.UpdateOptions(o => o.CodeFocusBandHeight = v));
+        ((Slider)slit.Children[1]).Foreground = Tw.B(Tw.Blue500);
+        radius.Margin = slit.Margin = new Thickness(0, 8, 0, 0);
+        return DK.V(0, Section("Spotlight Aperture Configuration", null, radius), Ruled(Section("Code Focus Slit Band", null, slit)));
+    }
+
+    private UIElement Profiles()
+    {
+        FrameworkElement Card(string title, System.Windows.Media.Color accent, string key, string fallbackColor, double fallbackWidth, byte fallbackOpacity, bool fallbackPressure)
+        {
+            var profile = _settings.ToolProfiles.TryGetValue(key, out var p) ? p : null;
+            var color = profile?.Color ?? fallbackColor;
+            var hex = color.Length == 9 ? "#" + color[3..] : color;
+            var name = InspectorWindow.TeachingColors.FirstOrDefault(c => string.Equals(c.Hex, hex, StringComparison.OrdinalIgnoreCase)).Name ?? "Custom";
+            var opacity = profile?.Opacity ?? fallbackOpacity;
+            var lines = DK.V(2,
+                DK.Text($"Color: {hex.ToUpperInvariant()} ({name})", 11, "Ink.Text300", mono: true),
+                DK.Text($"Thickness: {profile?.StrokeWidth ?? fallbackWidth:0.0} px", 11, "Ink.Text300", mono: true),
+                DK.Text($"Opacity: {Math.Round(opacity / 255d * 100)}%" + (opacity < 255 ? $" ({opacity} alpha)" : string.Empty), 11, "Ink.Text300", mono: true),
+                DK.Text($"Pressure: {((profile?.PressureEnabled ?? fallbackPressure) ? "Enabled" : "Disabled")}", 11, "Ink.Text300", mono: true));
+            var titleText = DK.Text(title, 12, Tw.B(accent), FontWeights.SemiBold);
+            titleText.Margin = new Thickness(0, 0, 0, 4);
+            return DK.Surface(DK.V(0, titleText, lines), "Ink.Raised40", "Ink.Divider", 12, new Thickness(12));
+        }
+        return Section("Per-Tool Visual Memory Profiles",
+            CodeNote(("", false), ("ToolProfileStore.cs", true), (" preserves isolated styles per tool so Pen, Highlighter, and Shapes remember their own thickness and colors.", false)),
+            DK.Columns(2, 12, new UIElement[]
+            {
+                Card("Pen Profile", Tw.Blue400, "Pen_Ballpoint", "#FF2563EB", 4, 255, true),
+                Card("Highlighter Profile", Tw.Amber400, "Highlighter_Highlighter", "#FFF2B705", 18, 115, false),
+                Card("Arrow Profile", Tw.Rose400, "Shape_Arrow", "#FFE5484D", 6, 255, false),
+                Card("Laser Profile", Tw.Red400, "Laser", "#FFE5484D", 8, 255, false)
+            }));
+    }
+
+    private UIElement Audit()
+    {
+        _cpuText = DK.Text("Measuring…", 12, Tw.B(Tw.Amber400), FontWeights.SemiBold);
+        var optimized = _settings.Advanced.IdleCpuOptimized;
+        var toggle = optimized
+            ? DK.Button(DK.Plain("Optimized (Event-Driven)", 12, FontWeights.Medium), Tw.B(Tw.Emerald600), Tw.B(Colors.White), Tw.B(Tw.Emerald500), Tw.B(Colors.White), 4, new Thickness(10, 4, 10, 4))
+            : DK.Button(DK.Plain("Unthrottled (75ms Poll)", 12, FontWeights.Medium), "Ink.Control", "Ink.Text400", "Ink.ControlHover", "Ink.Text200", 4, new Thickness(10, 4, 10, 4));
+        toggle.Click += (_, _) =>
+        {
+            _settings.Advanced.IdleCpuOptimized = !_settings.Advanced.IdleCpuOptimized;
+            Save();
+            Toast.Show("Idle CPU mode saved - takes effect next launch");
+            Render();
+        };
+        var cpuCard = DK.Surface(DK.V(6,
+                DK.H(8, new LucideIcon("AlertCircle", 16) { Foreground = Tw.B(Tw.Amber400) }, _cpuText),
+                CodeNote(("Overlay display polling runs only while a drawing tool is active (", false), ("OverlayManager.cs", true),
+                    ("), and the magnifier glide timer (", false), ("WindowsZoomEngine.cs", true), (") stops when zoom is off.", false)),
+                DK.Between(DK.Text("Idle CPU Throttle Optimization:", 12, "Ink.Text400"), toggle)),
+            Tw.B(Tw.Amber950, 0.3), Tw.B(Tw.Amber800, 0.6), 12, new Thickness(14));
+        var nuget = DK.Surface(DK.V(4, DK.Text("Zero-NuGet Architecture Status", 12, "Ink.Text", FontWeights.Medium),
+                DK.Text("Solution verified with 0 package dependencies. Compiles against vanilla Windows 10/11 Win32 + WPF APIs.", 11, "Ink.Text400").Wrap()),
+            "Ink.Raised40", "Ink.Divider", 12, new Thickness(12));
+        nuget.Margin = new Thickness(0, 16, 0, 0);
+        using (var process = Process.GetCurrentProcess()) { _lastCpu = process.TotalProcessorTime; }
+        _lastSample = DateTime.UtcNow;
+        _cpuTimer.Start();
+        var title = DK.Text("Technical Debt & System Diagnostics", 14, "Ink.Text", FontWeights.SemiBold);
+        title.Margin = new Thickness(0, 0, 0, 16);
+        return DK.V(0, title, cpuCard, nuget);
+    }
+
+    private void SampleCpu()
+    {
+        if (_cpuText is null) return;
+        using var process = Process.GetCurrentProcess();
+        var now = DateTime.UtcNow;
+        var cpu = process.TotalProcessorTime;
+        var percent = (cpu - _lastCpu).TotalMilliseconds / ((now - _lastSample).TotalMilliseconds * Environment.ProcessorCount) * 100;
+        _lastCpu = cpu;
+        _lastSample = now;
+        _cpuText.Text = $"Live InkIt CPU: {percent:0.00}% · Working set {process.WorkingSet64 / 1048576d:0} MB";
+        _cpuText.Foreground = Tw.B(percent < 1 ? Tw.Emerald400 : Tw.Amber400);
+    }
+}

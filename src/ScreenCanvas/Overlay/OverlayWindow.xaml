@@ -9,13 +9,45 @@
         MouseLeftButtonDown="InputRoot_OnMouseLeftButtonDown"
         MouseMove="InputRoot_OnMouseMove" MouseLeftButtonUp="InputRoot_OnMouseLeftButtonUp"
         LostMouseCapture="InputRoot_OnLostMouseCapture">
-    <Border x:Name="BoardSurface" Background="Transparent" />
+    <!-- Board surface: transparent, whiteboard, blackboard or engineering grid. -->
+    <Border x:Name="BoardSurface" Background="Transparent" IsHitTestVisible="False" />
     <InkCanvas x:Name="InkSurface" Background="Transparent"
-               EditingMode="None" UseCustomCursor="False" />
+               EditingMode="None" EditingModeInverted="EraseByStroke" UseCustomCursor="False" />
     <!-- Kept above ink so an in-place text editor can receive keyboard/mouse input. -->
     <Canvas x:Name="ShapeSurface" Background="{x:Null}" />
+    <!-- Snap guides, selection boxes and marquee. -->
+    <Canvas x:Name="GuideSurface" IsHitTestVisible="False" />
+    <!-- Decaying laser trail and head. -->
+    <Canvas x:Name="LaserSurface" IsHitTestVisible="False" />
     <Canvas x:Name="SpotlightSurface" IsHitTestVisible="False" Visibility="Collapsed">
-      <Path x:Name="SpotlightPath" Fill="#B9000000" />
+      <Path x:Name="SpotlightPath" Fill="#D9000000" />
+      <Ellipse x:Name="SpotlightRing" Stroke="#F59E0B" StrokeThickness="3">
+        <Ellipse.Effect>
+          <DropShadowEffect Color="#F59E0B" BlurRadius="15" ShadowDepth="0" Opacity="0.9" />
+        </Ellipse.Effect>
+      </Ellipse>
     </Canvas>
+    <!-- Presentation stage curtain drape. -->
+    <Grid x:Name="CurtainSurface" VerticalAlignment="Top" Height="0" IsHitTestVisible="False" Visibility="Collapsed">
+      <Grid.Background>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+          <GradientStop Color="#0F172A" Offset="0" />
+          <GradientStop Color="#1E1B4B" Offset="0.95" />
+          <GradientStop Color="#6366F1" Offset="1" />
+        </LinearGradientBrush>
+      </Grid.Background>
+      <Border Height="3" VerticalAlignment="Bottom" Background="#818CF8" />
+    </Grid>
+    <!-- Interactive chrome drawn on the canvas (selection quick actions). -->
+    <Canvas x:Name="ChromeSurface" />
+    <!-- Windows Ink / digitizer status pill. -->
+    <Border x:Name="StatusPill" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="12,0,0,8"
+            IsHitTestVisible="False" Visibility="Collapsed" CornerRadius="999" Padding="10,4"
+            Background="#CC0F172A" BorderBrush="#1E293B" BorderThickness="1">
+      <Border.Effect>
+        <DropShadowEffect BlurRadius="14" ShadowDepth="4" Opacity="0.35" Color="#000000" Direction="270" />
+      </Border.Effect>
+      <StackPanel x:Name="StatusContent" Orientation="Horizontal" />
+    </Border>
   </Grid>
 </Window>

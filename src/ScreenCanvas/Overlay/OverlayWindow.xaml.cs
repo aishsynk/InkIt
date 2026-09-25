@@ -4,7 +4,6 @@ using System.Windows.Ink;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using ScreenCanvas.Core;
 using ScreenCanvas.Displays;
@@ -18,8 +17,16 @@ using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MediaPen = System.Windows.Media.Pen;
 using System.Windows.Threading;
 using InputCursors = System.Windows.Input.Cursors;
+using Size = System.Windows.Size;
 
 namespace ScreenCanvas.Overlay;
+
+/// <summary>Routes in-app keyboard shortcuts (palette, capability centre, orientation, ...) to the toolbar.</summary>
+public static class OverlayKeyRouter
+{
+    public static Func<Key, ModifierKeys, bool>? Handler { get; set; }
+    public static bool TryHandle(Key key, ModifierKeys modifiers) => Handler?.Invoke(key, modifiers) == true;
+}
 
 public partial class OverlayWindow : Window
 {
@@ -27,52 +34,31 @@ public partial class OverlayWindow : Window
     private readonly DisplayInfo _display;
     private readonly Stack<object> _removed = new();
     private readonly List<object> _history = [];
-    private bool _boardVisible;
+    private BoardKind _board = BoardKind.Transparent;
     private Point? _dragAnchor;
     private Path? _shapePreview;
-    private readonly System.Windows.Media.DrawingVisual _activeStrokeVisual = new();
-    private readonly System.Windows.Media.DrawingVisual _activeShapeVisual = new();
-    private Ellipse? _laserDot;
     private readonly DispatcherTimer _fadeTimer;
     private readonly Dictionary<object, (DateTimeOffset Start, TimeSpan Duration, double OriginalOpacity, byte OriginalAlpha)> _expirations = [];
     private readonly HashSet<UIElement> _erasedThisDrag = [];
     private Stroke? _mouseStroke;
     private TextBox? _textEditor;
-    private UIElement? _selectedElement;
-    private readonly System.Windows.Shapes.Rectangle _selectionVisual = new() { Stroke=Brushes.DeepSkyBlue, StrokeThickness=1.5, StrokeDashArray=new DoubleCollection([3,2]), Fill=Brushes.Transparent, IsHitTestVisible=false, Visibility=Visibility.Collapsed };
-    private Point? _selectionAnchor;
-    private Vector _selectionStartOffset;
+    private FrameworkElement? _textEditorHost;
     private readonly IOverlayManager? _manager;
 
     public OverlayWindow(DisplayInfo display, ToolSettings settings, IOverlayManager? manager = null)
     {
         InitializeComponent();
-        ShapeSurface.Children.Add(_selectionVisual);
         _settings = settings;
         _display = display;
         _manager = manager;
-        
-_fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(100) };
+
+        _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(100) };
         _fadeTimer.Tick += FadeTimer_OnTick;
         Left = display.Left;
         Top = display.Top;
         Width = display.Width;
         Height = display.Height;
-        InkSurface.StrokeCollected += (_, e) =>
-        {
-            if (_settings.PenMode is PenMode.Dashed or PenMode.Dotted)
-            {
-                InkSurface.Strokes.Remove(e.Stroke);
-                var pieces = PatternStroke(e.Stroke, _settings.PenMode == PenMode.Dotted);
-                foreach (var piece in pieces) InkSurface.Strokes.Add(piece);
-                _history.Add(new StrokeGroup(pieces));
-                _removed.Clear();
-                return;
-            }
-            _history.Add(e.Stroke);
-            _removed.Clear();
-            ScheduleFade(e.Stroke);
-        };
+        InkSurface.StrokeCollected += (_, e) => OnStylusStrokeCollected(e.Stroke);
         InkSurface.StrokeErasing += (_, e) =>
         {
             if (_expirations.TryGetValue(e.Stroke, out var expiration))
@@ -81,12 +67,17 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
                 e.Stroke.DrawingAttributes.Color = Color.FromArgb(expiration.OriginalAlpha, color.R, color.G, color.B);
                 _expirations.Remove(e.Stroke);
             }
+            _selection.Remove(e.Stroke);
             _history.Add(new Removal(e.Stroke));
             _removed.Clear();
         };
         MouseMove += OnMouseMove;
+        MouseLeave += (_, _) => HidePointerEffects();
         PreviewKeyDown += OverlayWindow_OnPreviewKeyDown;
-        Loaded += (_, _) => RefreshTool();
+        SizeChanged += (_, _) => RefreshOptions();
+        InitializeInputDevices();
+        InitializeEffects();
+        Loaded += (_, _) => { RefreshTool(); RefreshOptions(); };
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -108,7 +99,7 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
     {
         if (msg == WmNcHitTest)
         {
-            if (Mouse.Captured == InputRoot || _mouseStroke is not null || _dragAnchor is not null)
+            if (Mouse.Captured == InputRoot || _mouseStroke is not null || _dragAnchor is not null || _marquee is not null)
             {
                 return nint.Zero;
             }
@@ -148,47 +139,49 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
         if (enabled && !HasVisibleContent) Hide(); else if (!IsVisible) Show();
     }
 
-    private bool HasVisibleContent => _boardVisible || InkSurface.Strokes.Count > 0 || ShapeSurface.Children.Cast<UIElement>().Any(element => element != _laserDot && element != _selectionVisual);
+    private bool HasVisibleContent =>
+        _board != BoardKind.Transparent || _settings.CurtainProgress > 0 || InkSurface.Strokes.Count > 0 ||
+        ShapeSurface.Children.Count > 0;
 
     public void RefreshTool()
     {
         CancelMouseStroke();
         CancelShapePreview();
         if (_settings.Tool != ToolKind.Text) CommitTextEditor();
-        if (_settings.Tool != ToolKind.Laser && _laserDot is not null)
-        {
-            ShapeSurface.Children.Remove(_laserDot);
-            _laserDot = null;
-        }
+        if (_settings.Tool != ToolKind.Select) ClearSelection();
+        var highlighter = _settings.Tool == ToolKind.Highlighter;
         var attributes = new DrawingAttributes
         {
             Color = Color.FromArgb(_settings.Opacity, _settings.Color.R, _settings.Color.G, _settings.Color.B),
-            Width = _settings.Tool == ToolKind.Highlighter ? _settings.Thickness * 4 : _settings.Thickness,
-            Height = _settings.Tool == ToolKind.Highlighter ? _settings.Thickness * 4 : _settings.Thickness,
-            IsHighlighter = _settings.Tool == ToolKind.Highlighter,
+            Width = _settings.Thickness,
+            Height = _settings.Thickness,
+            IsHighlighter = highlighter,
             FitToCurve = true,
             IgnorePressure = !_settings.PressureEnabled
         };
-        if (_settings.PenMode == PenMode.Calligraphy)
+        if (!highlighter)
         {
-            attributes.StylusTip = StylusTip.Rectangle;
-            attributes.Width = _settings.Thickness * 2.2;
-            attributes.Height = Math.Max(1.5, _settings.Thickness * .48);
-            attributes.StylusTipTransform = new Matrix(.82, .57, -.57, .82, 0, 0);
+            if (_settings.PenMode == PenMode.Calligraphy)
+            {
+                attributes.StylusTip = StylusTip.Rectangle;
+                attributes.Width = _settings.Thickness * 2.2;
+                attributes.Height = Math.Max(1.5, _settings.Thickness * .48);
+                attributes.StylusTipTransform = new Matrix(.82, .57, -.57, .82, 0, 0);
+            }
+            else if (_settings.PenMode == PenMode.Brush)
+            {
+                attributes.StylusTip = StylusTip.Ellipse;
+                attributes.Width = _settings.Thickness * 1.35;
+                attributes.Height = _settings.Thickness * .72;
+                attributes.IgnorePressure = false;
+            }
+            else if (_settings.PenMode == PenMode.FeltTip)
+            {
+                attributes.StylusTip = StylusTip.Ellipse;
+                attributes.Width = attributes.Height = _settings.Thickness * 1.25;
+            }
+            else if (_settings.PenMode == PenMode.Pressure) attributes.IgnorePressure = false;
         }
-        else if (_settings.PenMode == PenMode.Brush)
-        {
-            attributes.StylusTip = StylusTip.Ellipse;
-            attributes.Width = _settings.Thickness * 1.35;
-            attributes.Height = _settings.Thickness * .72;
-            attributes.IgnorePressure = false;
-        }
-        else if (_settings.PenMode == PenMode.FeltTip)
-        {
-            attributes.StylusTip = StylusTip.Ellipse;
-            attributes.Width = attributes.Height = _settings.Thickness * 1.25;
-        }
-        else if (_settings.PenMode == PenMode.Pressure) attributes.IgnorePressure = false;
         InkSurface.DefaultDrawingAttributes = attributes;
 
         InkSurface.EditingMode = _settings.Tool switch
@@ -197,79 +190,147 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
             ToolKind.Eraser => InkCanvasEditingMode.EraseByStroke,
             _ => InkCanvasEditingMode.None
         };
-        SpotlightSurface.Visibility = _settings.Tool == ToolKind.Spotlight ? Visibility.Visible : Visibility.Collapsed;
         var cursor = _settings.Tool switch
         {
-            ToolKind.Pen or ToolKind.Highlighter => InputCursors.Pen,
+            ToolKind.Pen or ToolKind.Highlighter or ToolKind.Shape or ToolKind.NumberMarker or ToolKind.Spotlight => InputCursors.Cross,
             ToolKind.Text => InputCursors.IBeam,
-            ToolKind.Select => InputCursors.SizeAll,
-            ToolKind.Eraser or ToolKind.Shape or ToolKind.NumberMarker or ToolKind.Spotlight => InputCursors.Cross,
+            ToolKind.Select => InputCursors.Arrow,
+            ToolKind.Eraser => InputCursors.Cross,
             ToolKind.Laser => InputCursors.None,
             _ => InputCursors.Arrow
         };
         InputRoot.Cursor = cursor;
         InkSurface.Cursor = cursor;
+        if (_settings.Tool is not (ToolKind.Laser)) ClearLaserTrail();
+        SetNoActivate(_settings.Tool != ToolKind.Select && _textEditor is null);
+        RefreshOptions();
     }
 
     private bool IsOverToolbar(Point screenPoint) => _manager?.IsPointOverUi(screenPoint) ?? false;
+    private Point SnapPoint(Point point) => _settings.Snap(point);
+
+    // ------------------------------------------------------------------ Freehand ink
 
     private void InputRoot_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var screenPoint = PointToScreen(e.GetPosition(this));
         if (IsOverToolbar(screenPoint)) return;
+        if (e.OriginalSource is DependencyObject source && IsInsideChrome(source)) return;
         _manager?.NotifyInteractionStarted();
         if (_settings.Tool is not (ToolKind.Pen or ToolKind.Highlighter) || e.StylusDevice is not null) return;
-        var point=e.GetPosition(InkSurface);
-        _mouseStroke=new Stroke(new StylusPointCollection([new StylusPoint(point.X,point.Y)]),InkSurface.DefaultDrawingAttributes.Clone());
-        InkSurface.Strokes.Add(_mouseStroke); InputRoot.CaptureMouse(); e.Handled=true;
+        var point = SnapPoint(e.GetPosition(InkSurface));
+        var points = new StylusPointCollection([new StylusPoint(point.X, point.Y)]);
+        var attributes = InkSurface.DefaultDrawingAttributes.Clone();
+        _mouseStroke = _settings.Tool == ToolKind.Pen && StyledStroke.HasCustomRendering(_settings.PenMode)
+            ? new StyledStroke(points, attributes, _settings.PenMode)
+            : new Stroke(points, attributes);
+        InkSurface.Strokes.Add(_mouseStroke);
+        InputRoot.CaptureMouse();
+        e.Handled = true;
     }
 
     private void InputRoot_OnPreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if(_mouseStroke is null || e.LeftButton!=MouseButtonState.Pressed)return;
-        var point=e.GetPosition(InkSurface);
-        
-        if (_settings.PenMode == PenMode.StraightHighlighter)
+        if (_mouseStroke is null || e.LeftButton != MouseButtonState.Pressed) return;
+        var point = SnapPoint(e.GetPosition(InkSurface));
+        var last = _mouseStroke.StylusPoints[^1];
+        if (_settings.SnapToGrid && Math.Abs(last.X - point.X) < 0.5 && Math.Abs(last.Y - point.Y) < 0.5) { e.Handled = true; return; }
+
+        if (_settings.Tool == ToolKind.Highlighter && _settings.PenMode == PenMode.StraightHighlighter)
         {
             while (_mouseStroke.StylusPoints.Count > 1) _mouseStroke.StylusPoints.RemoveAt(1);
-            _mouseStroke.StylusPoints.Add(new StylusPoint(point.X,point.Y));
+            _mouseStroke.StylusPoints.Add(new StylusPoint(point.X, point.Y));
         }
         else
         {
             var pressure = _settings.PenMode is PenMode.Brush or PenMode.Pressure
-                ? (float)Math.Clamp(.3 + .7 / (1 + (point - new Point(_mouseStroke.StylusPoints[^1].X, _mouseStroke.StylusPoints[^1].Y)).Length / 5), .3, 1)
+                ? (float)Math.Clamp(.3 + .7 / (1 + (point - new Point(last.X, last.Y)).Length / 5), .3, 1)
                 : .5f;
-            var stylusPoint = new StylusPoint(point.X, point.Y) { PressureFactor = pressure };
-            _mouseStroke.StylusPoints.Add(stylusPoint);
+            _mouseStroke.StylusPoints.Add(new StylusPoint(point.X, point.Y) { PressureFactor = pressure });
         }
-        
-        // Zero-lag Visual update
-        using (var dc = _activeStrokeVisual.RenderOpen())
-        {
-            dc.DrawGeometry(new SolidColorBrush(_settings.Color), new MediaPen(new SolidColorBrush(_settings.Color), _settings.Thickness), _mouseStroke.GetGeometry());
-        }
-        
-        e.Handled=true;
+        e.Handled = true;
     }
 
     private void InputRoot_OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if(_mouseStroke is null)return;
-        var stroke=_mouseStroke;_mouseStroke=null;InputRoot.ReleaseMouseCapture();
-        if (_settings.PenMode is PenMode.Dashed or PenMode.Dotted)
+        if (_mouseStroke is null) return;
+        var stroke = _mouseStroke;
+        _mouseStroke = null;
+        InputRoot.ReleaseMouseCapture();
+        FinishStroke(stroke);
+        e.Handled = true;
+    }
+
+    private void OnStylusStrokeCollected(Stroke collected)
+    {
+        if (_pinchActive || _touchContacts.Count > 1)
+        {
+            InkSurface.Strokes.Remove(collected);
+            return;
+        }
+        var stroke = collected;
+        if (_settings.SnapToGrid)
+        {
+            var snapped = new StylusPointCollection(collected.StylusPoints.Description);
+            foreach (var p in collected.StylusPoints)
+            {
+                var s = SnapPoint(new Point(p.X, p.Y));
+                snapped.Add(new StylusPoint(s.X, s.Y, p.PressureFactor));
+            }
+            collected.StylusPoints = snapped;
+        }
+        if (_settings.Tool == ToolKind.Pen && StyledStroke.HasCustomRendering(_settings.PenMode))
+        {
+            stroke = new StyledStroke(collected.StylusPoints.Clone(), collected.DrawingAttributes.Clone(), _settings.PenMode);
+            var index = InkSurface.Strokes.IndexOf(collected);
+            InkSurface.Strokes.Remove(collected);
+            if (index >= 0 && index <= InkSurface.Strokes.Count) InkSurface.Strokes.Insert(index, stroke);
+            else InkSurface.Strokes.Add(stroke);
+        }
+        FinishStroke(stroke);
+    }
+
+    /// <summary>Commits a finished stroke: auto-shape conversion, dashed/dotted patterning, history and fade.</summary>
+    private void FinishStroke(Stroke stroke)
+    {
+        if (_settings.AutoShapeAssist && _settings.Tool is ToolKind.Pen or ToolKind.Highlighter)
+        {
+            var points = stroke.StylusPoints.Select(p => new Point(p.X, p.Y)).ToList();
+            if (ShapeGeometry.Recognize(points) is { } recognized)
+            {
+                InkSurface.Strokes.Remove(stroke);
+                var path = NewShapePath(recognized.Kind);
+                path.Data = ShapeGeometry.Build(recognized.Kind, recognized.Start, recognized.End, _settings.Thickness);
+                ShapeSurface.Children.Add(path);
+                CommitAnnotation(path);
+                return;
+            }
+        }
+        if (_settings.Tool == ToolKind.Pen && _settings.PenMode is PenMode.Dashed or PenMode.Dotted)
         {
             InkSurface.Strokes.Remove(stroke);
-            var pieces=PatternStroke(stroke,_settings.PenMode==PenMode.Dotted);
-            foreach(var piece in pieces)InkSurface.Strokes.Add(piece);
+            var pieces = PatternStroke(stroke, _settings.PenMode == PenMode.Dotted);
+            foreach (var piece in pieces) InkSurface.Strokes.Add(piece);
             _history.Add(new StrokeGroup(pieces));
+            _removed.Clear();
+            return;
         }
-        else {_history.Add(stroke);ScheduleFade(stroke);}
-        _removed.Clear();e.Handled=true;
+        CommitAnnotation(stroke);
+    }
+
+    private void CommitAnnotation(object item)
+    {
+        _history.Add(item);
+        _removed.Clear();
+        ScheduleFade(item);
     }
 
     private void CancelMouseStroke()
     {
-        if(_mouseStroke is null)return;InkSurface.Strokes.Remove(_mouseStroke);_mouseStroke=null;if(Mouse.Captured==InputRoot)InputRoot.ReleaseMouseCapture();
+        if (_mouseStroke is null) return;
+        InkSurface.Strokes.Remove(_mouseStroke);
+        _mouseStroke = null;
+        if (Mouse.Captured == InputRoot) InputRoot.ReleaseMouseCapture();
     }
 
     private static StrokeCollection PatternStroke(Stroke source, bool dotted)
@@ -302,9 +363,12 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
         return result;
     }
 
+    // ------------------------------------------------------------------ History
+
     public void Undo()
     {
         if (_history.Count == 0) return;
+        ClearSelection();
         var item = _history[^1];
         _history.RemoveAt(_history.Count - 1);
         UndoItem(item);
@@ -314,6 +378,7 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
     public void Redo()
     {
         if (_removed.Count == 0) return;
+        ClearSelection();
         var item = _removed.Pop();
         RedoItem(item);
         _history.Add(item);
@@ -323,8 +388,9 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
     {
         CancelShapePreview();
         CancelTextEditor();
+        ClearSelection();
         var snapshot = InkSurface.Strokes.Cast<object>()
-            .Concat(ShapeSurface.Children.Cast<UIElement>().Where(element => element != _laserDot && element != _selectionVisual))
+            .Concat(ShapeSurface.Children.Cast<UIElement>())
             .ToArray();
         if (snapshot.Length == 0) return;
         foreach (var element in snapshot.OfType<UIElement>())
@@ -338,55 +404,75 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
         _history.Add(new ClearOperation(snapshot));
         _removed.Clear();
         InkSurface.Strokes.Clear();
-        foreach (var element in ShapeSurface.Children.Cast<UIElement>().Where(element => element != _laserDot).ToArray())
-            ShapeSurface.Children.Remove(element);
+        ShapeSurface.Children.Clear();
         _expirations.Clear();
         _fadeTimer.Stop();
     }
 
-    public void ToggleBoard(bool dark)
+    // ------------------------------------------------------------------ Board
+
+    public void ToggleBoard(bool dark) => SetBoard(_board == BoardKind.Transparent ? (dark ? BoardKind.Blackboard : BoardKind.Whiteboard) : BoardKind.Transparent);
+
+    public void SetBoard(Color? color) => SetBoard(color is null ? BoardKind.Transparent : color == Colors.White ? BoardKind.Whiteboard : BoardKind.Blackboard);
+
+    public void SetBoard(BoardKind kind)
     {
-        _boardVisible = !_boardVisible;
-        BoardSurface.Background = _boardVisible
-            ? new SolidColorBrush(dark ? Colors.Black : Colors.White)
-            : System.Windows.Media.Brushes.Transparent;
+        _board = kind;
+        UpdateBoardSurface();
+        if (kind != BoardKind.Transparent && !IsVisible) Show();
     }
 
-    public void SetBoard(Color? color)
+    private void UpdateBoardSurface()
     {
-        _boardVisible = color.HasValue;
-        BoardSurface.Background = color.HasValue ? new SolidColorBrush(color.Value) : Brushes.Transparent;
+        BoardSurface.Background = _board switch
+        {
+            BoardKind.Whiteboard => Brushes.White,
+            BoardKind.Blackboard => new SolidColorBrush(OverlayManager.BlackboardColor),
+            BoardKind.Grid => GridBrush(Math.Max(5, _settings.GridSize)),
+            _ => Brushes.Transparent
+        };
     }
 
-    private void OnMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    /// <summary>Engineering grid: #1E293B 1px lines every <paramref name="step"/> px on #0F172A.</summary>
+    private static System.Windows.Media.Brush GridBrush(int step)
     {
-        if (_settings.Tool != ToolKind.Spotlight) return;
-        var point = e.GetPosition(this);
-        var alpha = (byte)Math.Clamp(_settings.SpotlightOverlayOpacity * 255, 0, 255);
-        SpotlightPath.Fill = new SolidColorBrush(Color.FromArgb(alpha, 0, 0, 0));
-        var outer = new RectangleGeometry(new Rect(0, 0, ActualWidth, ActualHeight));
-        var hole = new EllipseGeometry(point, _settings.SpotlightRadius, _settings.SpotlightRadius);
-        SpotlightPath.Data = new CombinedGeometry(GeometryCombineMode.Exclude, outer, hole);
+        var line = new SolidColorBrush(Color.FromRgb(0x1E, 0x29, 0x3B));
+        var drawing = new DrawingGroup();
+        drawing.Children.Add(new GeometryDrawing(new SolidColorBrush(OverlayManager.GridBoardColor), null, new RectangleGeometry(new Rect(0, 0, step, step))));
+        drawing.Children.Add(new GeometryDrawing(line, null, new RectangleGeometry(new Rect(0, 0, step, 1))));
+        drawing.Children.Add(new GeometryDrawing(line, null, new RectangleGeometry(new Rect(0, 0, 1, step))));
+        var brush = new DrawingBrush(drawing)
+        {
+            TileMode = TileMode.Tile,
+            Viewport = new Rect(0, 0, step, step),
+            ViewportUnits = BrushMappingMode.Absolute,
+            Stretch = Stretch.None
+        };
+        brush.Freeze();
+        return brush;
     }
+
+    // ------------------------------------------------------------------ Vector tools
 
     private void InputRoot_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         var screenPoint = PointToScreen(e.GetPosition(this));
         if (IsOverToolbar(screenPoint)) return;
+        if (e.OriginalSource is DependencyObject source && IsInsideChrome(source)) return;
         _manager?.NotifyInteractionStarted();
-        var point = e.GetPosition(InputRoot);
+        var point = SnapPoint(e.GetPosition(InputRoot));
         _erasedThisDrag.Clear();
         if (_settings.Tool == ToolKind.Select)
         {
-            SelectAt(point);
-            if (_selectedElement is not null) { _selectionAnchor=point;_selectionStartOffset=GetOffset(_selectedElement);InputRoot.CaptureMouse(); }
-            e.Handled=true;return;
+            BeginSelection(point, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) || Keyboard.Modifiers.HasFlag(ModifierKeys.Control));
+            e.Handled = true;
+            return;
         }
-        if (_settings.Tool == ToolKind.Eraser && TryEraseVector(point)) { e.Handled = true; return; }
+        if (_settings.Tool == ToolKind.Eraser && TryEraseVector(e.GetPosition(InputRoot))) { e.Handled = true; return; }
         if (_settings.Tool == ToolKind.Shape)
         {
             _dragAnchor = point;
-            _shapePreview = NewShapePath();
+            _shapePreview = NewShapePath(_settings.Shape);
             ShapeSurface.Children.Add(_shapePreview);
             InputRoot.CaptureMouse();
             UpdateShape(_shapePreview, point, point, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift), Keyboard.Modifiers.HasFlag(ModifierKeys.Alt));
@@ -406,30 +492,17 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
 
     private void InputRoot_OnMouseMove(object sender, MouseEventArgs e)
     {
-        var point = e.GetPosition(InputRoot);
-        if (_settings.Tool==ToolKind.Select && _selectedElement is not null && _selectionAnchor is Point selectionAnchor && e.LeftButton==MouseButtonState.Pressed)
+        var raw = e.GetPosition(InputRoot);
+        var point = SnapPoint(raw);
+        if (_settings.Tool == ToolKind.Select && e.LeftButton == MouseButtonState.Pressed && ContinueSelection(point))
         {
-            var delta=point-selectionAnchor;SetOffset(_selectedElement,_selectionStartOffset+delta);UpdateSelectionVisual();e.Handled=true;return;
+            e.Handled = true;
+            return;
         }
         if (_settings.Tool == ToolKind.Eraser && e.LeftButton == MouseButtonState.Pressed)
         {
             var screenPoint = PointToScreen(e.GetPosition(this));
-            if (!IsOverToolbar(screenPoint) && TryEraseVector(point)) { e.Handled=true; return; }
-        }
-        if (_settings.Tool == ToolKind.Laser)
-        {
-            var screenPoint = PointToScreen(e.GetPosition(this));
-            if (IsOverToolbar(screenPoint))
-            {
-                if (_laserDot is not null) _laserDot.Visibility = Visibility.Collapsed;
-            }
-            else
-            {
-                _laserDot ??= CreateLaserDot();
-                _laserDot.Visibility = Visibility.Visible;
-                Canvas.SetLeft(_laserDot, point.X - _laserDot.Width / 2);
-                Canvas.SetTop(_laserDot, point.Y - _laserDot.Height / 2);
-            }
+            if (!IsOverToolbar(screenPoint) && TryEraseVector(raw)) { e.Handled = true; return; }
         }
         if (_dragAnchor is not Point anchor || _shapePreview is null || e.LeftButton != MouseButtonState.Pressed) return;
         UpdateShape(_shapePreview, anchor, point, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift), Keyboard.Modifiers.HasFlag(ModifierKeys.Alt));
@@ -439,27 +512,27 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
     private void InputRoot_OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         _erasedThisDrag.Clear();
-        if (_settings.Tool==ToolKind.Select && _selectedElement is not null && _selectionAnchor is not null)
+        if (_settings.Tool == ToolKind.Select)
         {
-            var movedOffset=GetOffset(_selectedElement);if((movedOffset-_selectionStartOffset).Length>.5){_history.Add(new MoveOperation(_selectedElement,_selectionStartOffset,movedOffset));_removed.Clear();}
-            _selectionAnchor=null;if(Mouse.Captured==InputRoot)InputRoot.ReleaseMouseCapture();e.Handled=true;return;
+            EndSelection();
+            e.Handled = true;
+            return;
         }
         if (_dragAnchor is not Point anchor || _shapePreview is null) return;
-        var end = e.GetPosition(InputRoot);
+        var end = SnapPoint(e.GetPosition(InputRoot));
         UpdateShape(_shapePreview, anchor, end, Keyboard.Modifiers.HasFlag(ModifierKeys.Shift), Keyboard.Modifiers.HasFlag(ModifierKeys.Alt));
         var completed = _shapePreview;
         _shapePreview = null;
         _dragAnchor = null;
         InputRoot.ReleaseMouseCapture();
+        UpdateGuides(e.GetPosition(InputRoot));
         if ((end - anchor).Length < 2)
         {
             ShapeSurface.Children.Remove(completed);
             e.Handled = true;
             return;
         }
-        _history.Add(completed);
-        ScheduleFade(completed);
-        _removed.Clear();
+        CommitAnnotation(completed);
         if (!_settings.StickyTools) _manager?.DeactivateCurrentTool(ToolDeactivationReason.CursorSelected);
         e.Handled = true;
     }
@@ -471,17 +544,26 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
         _erasedThisDrag.Clear();
     }
 
-    private Path NewShapePath() => new()
+    private Path NewShapePath(ShapeKind kind)
     {
-        Stroke = new SolidColorBrush(_settings.Color),
-        StrokeThickness = _settings.Thickness,
-        StrokeLineJoin = PenLineJoin.Round,
-        StrokeStartLineCap = PenLineCap.Round,
-        StrokeEndLineCap = PenLineCap.Round,
-        Opacity = _settings.Opacity / 255d,
-        Fill = _settings.ShapeFillEnabled ? new SolidColorBrush(Color.FromArgb(_settings.ShapeFillOpacity, _settings.Color.R, _settings.Color.G, _settings.Color.B)) : Brushes.Transparent,
-        IsHitTestVisible = false
-    };
+        var stroke = new SolidColorBrush(_settings.Color);
+        return new Path
+        {
+            Stroke = stroke,
+            StrokeThickness = _settings.Thickness,
+            StrokeLineJoin = PenLineJoin.Round,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            Opacity = _settings.Opacity / 255d,
+            Fill = ShapeGeometry.HasSolidHead(kind)
+                ? stroke
+                : _settings.ShapeFillEnabled
+                    ? new SolidColorBrush(Color.FromArgb(_settings.ShapeFillOpacity, _settings.Color.R, _settings.Color.G, _settings.Color.B))
+                    : Brushes.Transparent,
+            Tag = kind,
+            IsHitTestVisible = false
+        };
+    }
 
     private void UpdateShape(Path path, Point start, Point end, bool constrain, bool fromCenter)
     {
@@ -492,99 +574,51 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
             angle = Math.Round(angle / (Math.PI / 4)) * (Math.PI / 4);
             end = new Point(start.X + Math.Cos(angle) * distance, start.Y + Math.Sin(angle) * distance);
         }
-        if (constrain && _settings.Shape is ShapeKind.Rectangle or ShapeKind.RoundedRectangle or ShapeKind.Ellipse)
+        if (constrain && _settings.Shape is ShapeKind.Rectangle or ShapeKind.RoundedRectangle or ShapeKind.Ellipse or ShapeKind.Diamond)
         {
             var side = Math.Max(Math.Abs(end.X - start.X), Math.Abs(end.Y - start.Y));
-            end = new Point(start.X + Math.Sign(end.X-start.X) * side, start.Y + Math.Sign(end.Y-start.Y) * side);
+            end = new Point(start.X + Math.Sign(end.X - start.X) * side, start.Y + Math.Sign(end.Y - start.Y) * side);
         }
         if (fromCenter)
         {
             var delta = end - start;
             start -= delta;
         }
-        var rect = new Rect(start, end);
-        path.Data = _settings.Shape switch
-        {
-            ShapeKind.Line => new LineGeometry(start, end),
-            ShapeKind.Arrow => ArrowGeometry(start, end, false, _settings.Thickness),
-            ShapeKind.DoubleArrow => ArrowGeometry(start, end, true, _settings.Thickness),
-            ShapeKind.Rectangle => new RectangleGeometry(rect),
-            ShapeKind.RoundedRectangle => new RectangleGeometry(rect, 14, 14),
-            ShapeKind.Ellipse => new EllipseGeometry(rect),
-            ShapeKind.Diamond => PolygonGeometry([new Point(rect.Left + rect.Width / 2, rect.Top), new Point(rect.Right, rect.Top + rect.Height / 2), new Point(rect.Left + rect.Width / 2, rect.Bottom), new Point(rect.Left, rect.Top + rect.Height / 2)]),
-            _ => new RectangleGeometry(rect)
-        };
+        path.Data = ShapeGeometry.Build(_settings.Shape, start, end, _settings.Thickness);
+        _shapeDimensions = new Size(Math.Abs(end.X - start.X), Math.Abs(end.Y - start.Y));
     }
-
-    private static Geometry PolygonGeometry(IReadOnlyList<Point> points)
-    {
-        var figure = new PathFigure { StartPoint = points[0], IsClosed = true };
-        figure.Segments.Add(new PolyLineSegment(points.Skip(1), true));
-        return new PathGeometry([figure]);
-    }
-
-    private static Geometry ArrowGeometry(Point start, Point end, bool startHead, double strokeWidth)
-    {
-        var vector = start - end;
-        if (vector.Length < 1) return new LineGeometry(start, end);
-        vector.Normalize();
-        var normal = new Vector(-vector.Y, vector.X);
-        var length = Math.Clamp(10 + strokeWidth * 1.8, 12, 28);
-        var width = Math.Clamp(5 + strokeWidth, 6, 16);
-        var group = new GeometryGroup();
-        group.Children.Add(new LineGeometry(start, end));
-        group.Children.Add(new LineGeometry(end, end + vector * length + normal * width));
-        group.Children.Add(new LineGeometry(end, end + vector * length - normal * width));
-        if (startHead)
-        {
-            vector = -vector;
-            group.Children.Add(new LineGeometry(start, start + vector * length + normal * width));
-            group.Children.Add(new LineGeometry(start, start + vector * length - normal * width));
-        }
-        return group;
-    }
-
-    private static Geometry CurvedArrowGeometry(Point start, Point end, double width)
-    {
-        var middle = new Point((start.X+end.X)/2, Math.Min(start.Y,end.Y)-Math.Max(24,Math.Abs(end.X-start.X)*.25));
-        var figure = new PathFigure { StartPoint=start };
-        figure.Segments.Add(new QuadraticBezierSegment(middle,end,true));
-        var group=new GeometryGroup(); group.Children.Add(new PathGeometry([figure])); group.Children.Add(ArrowGeometry(new Point((middle.X+end.X)/2,(middle.Y+end.Y)/2),end,false,width)); return group;
-    }
-
-    private static Geometry ElbowGeometry(Point start, Point end, bool arrow, double width)
-    {
-        var bend=new Point(end.X,start.Y); var figure=new PathFigure { StartPoint=start }; figure.Segments.Add(new PolyLineSegment([bend,end],true));
-        var group=new GeometryGroup(); group.Children.Add(new PathGeometry([figure])); if(arrow) group.Children.Add(ArrowGeometry(bend,end,false,width)); return group;
-    }
-
-    private static Geometry DatabaseGeometry(Rect r) { var g=new GeometryGroup(); g.Children.Add(new RectangleGeometry(new Rect(r.Left,r.Top+r.Height*.12,r.Width,r.Height*.76))); g.Children.Add(new EllipseGeometry(new Rect(r.Left,r.Top,r.Width,r.Height*.24))); g.Children.Add(new EllipseGeometry(new Rect(r.Left,r.Bottom-r.Height*.24,r.Width,r.Height*.24))); return g; }
-    private static Geometry CloudGeometry(Rect r) { var g=new GeometryGroup(); foreach(var e in new[]{new Rect(r.Left,r.Top+r.Height*.35,r.Width,r.Height*.55),new Rect(r.Left+r.Width*.12,r.Top+r.Height*.2,r.Width*.42,r.Height*.55),new Rect(r.Left+r.Width*.4,r.Top,r.Width*.45,r.Height*.7),new Rect(r.Left+r.Width*.65,r.Top+r.Height*.27,r.Width*.35,r.Height*.55)}) g.Children.Add(new EllipseGeometry(e)); return g; }
-    private static Geometry CalloutGeometry(Rect r) => PolygonGeometry([r.TopLeft,r.TopRight,r.BottomRight,new Point(r.Left+r.Width*.35,r.Bottom),new Point(r.Left+r.Width*.18,r.Bottom+r.Height*.22),new Point(r.Left+r.Width*.22,r.Bottom),r.BottomLeft]);
-    private static Geometry CheckGeometry(Rect r) { var f=new PathFigure{StartPoint=new Point(r.Left,r.Top+r.Height*.55)}; f.Segments.Add(new PolyLineSegment([new Point(r.Left+r.Width*.38,r.Bottom),r.TopRight],true)); return new PathGeometry([f]); }
-    private static Geometry CrossGeometry(Rect r) { var g=new GeometryGroup(); g.Children.Add(new LineGeometry(r.TopLeft,r.BottomRight)); g.Children.Add(new LineGeometry(r.TopRight,r.BottomLeft)); return g; }
-    private static Geometry WarningGeometry(Rect r) { var g=new GeometryGroup(); g.Children.Add(PolygonGeometry([new Point(r.Left+r.Width/2,r.Top),r.BottomRight,r.BottomLeft])); g.Children.Add(new LineGeometry(new Point(r.Left+r.Width/2,r.Top+r.Height*.3),new Point(r.Left+r.Width/2,r.Top+r.Height*.68))); return g; }
-    private static Geometry QuestionGeometry(Rect r) { var g=new GeometryGroup(); g.Children.Add(new EllipseGeometry(r)); g.Children.Add(new EllipseGeometry(new Point(r.Left+r.Width/2,r.Bottom-r.Height*.2),Math.Max(2,r.Width*.03),Math.Max(2,r.Width*.03))); return g; }
-    private static Geometry StarGeometry(Rect r) { var pts=new List<Point>(); for(var i=0;i<10;i++){var a=-Math.PI/2+i*Math.PI/5;var radius=i%2==0?1:.42;pts.Add(new Point(r.Left+r.Width/2+Math.Cos(a)*r.Width/2*radius,r.Top+r.Height/2+Math.Sin(a)*r.Height/2*radius));} return PolygonGeometry(pts); }
 
     private void AddMarker(Point point)
     {
-        var size = _settings.MarkerSize;
         if (_settings.MarkerNumber < 1) _settings.MarkerNumber = 1;
         var label = _settings.LetterMarkers ? MarkerLetter(_settings.MarkerNumber++) : (_settings.MarkerNumber++).ToString();
+        // Design: 28px badge in the tool colour, 2px white ring, soft shadow, bold white label.
+        const double size = 28;
         var border = new Border
         {
-            Width = size, Height = size, CornerRadius = new CornerRadius(_settings.SquareMarkers ? 7 : size / 2),
+            Width = size,
+            Height = size,
+            CornerRadius = new CornerRadius(_settings.SquareMarkers ? 7 : size / 2),
             Background = new SolidColorBrush(_settings.Color),
-            Child = new TextBlock { Text = label, Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, FontSize = size * .48, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = System.Windows.VerticalAlignment.Center },
+            BorderBrush = Brushes.White,
+            BorderThickness = new Thickness(2),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 6, ShadowDepth = 0, Opacity = 0.5, Color = Colors.Black },
+            Child = new TextBlock
+            {
+                Text = label,
+                Foreground = Brushes.White,
+                FontWeight = FontWeights.Bold,
+                FontSize = 12,
+                FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = System.Windows.VerticalAlignment.Center
+            },
             IsHitTestVisible = false
         };
         Canvas.SetLeft(border, point.X - size / 2);
         Canvas.SetTop(border, point.Y - size / 2);
         ShapeSurface.Children.Add(border);
-        _history.Add(border);
-        ScheduleFade(border);
-        _removed.Clear();
+        CommitAnnotation(border);
     }
 
     private static string MarkerLetter(int value)
@@ -594,138 +628,148 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
         return result;
     }
 
+    // ------------------------------------------------------------------ Text
+
     private void BeginText(Point point)
     {
         CommitTextEditor();
+        // Design: dark field with blue border, white semibold text, and a "Done" button.
         var editor = new TextBox
         {
-            MinWidth = 100,
-            FontFamily = new System.Windows.Media.FontFamily(_settings.FontFamily),
-            FontSize = _settings.FontSize,
-            Foreground = new SolidColorBrush(_settings.Color),
-            CaretBrush = new SolidColorBrush(_settings.Color),
-            FontWeight = _settings.TextBold ? FontWeights.Bold : FontWeights.Normal,
-            FontStyle = _settings.TextItalic ? FontStyles.Italic : FontStyles.Normal,
-            TextDecorations = _settings.TextUnderline ? TextDecorations.Underline : null,
-            Background = Brushes.Transparent,
-            BorderBrush = new SolidColorBrush(Color.FromArgb(160, _settings.Color.R, _settings.Color.G, _settings.Color.B)),
+            MinWidth = 200,
+            FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brushes.White,
+            CaretBrush = Brushes.White,
+            Background = new SolidColorBrush(Color.FromArgb(0xE6, 0x0F, 0x17, 0x2A)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x3B, 0x82, 0xF6)),
             BorderThickness = new Thickness(1),
-            Padding = new Thickness(4, 2, 4, 2),
-            AcceptsReturn = true
+            Padding = new Thickness(6, 3, 6, 3),
+            AcceptsReturn = false,
+            VerticalContentAlignment = VerticalAlignment.Center
         };
-        Canvas.SetLeft(editor, point.X); Canvas.SetTop(editor, point.Y);
-        ShapeSurface.Children.Add(editor);
+        var placeholder = new TextBlock
+        {
+            Text = "Type annotation and press Enter...",
+            Foreground = new SolidColorBrush(Color.FromRgb(0x64, 0x74, 0x8B)),
+            FontSize = 14,
+            Margin = new Thickness(9, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            IsHitTestVisible = false
+        };
+        editor.TextChanged += (_, _) => placeholder.Visibility = editor.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        var field = new Grid { Children = { editor, placeholder } };
+        var done = new System.Windows.Controls.Button
+        {
+            Content = new TextBlock { Text = "Done", FontSize = 12, Foreground = Brushes.White },
+            Margin = new Thickness(4, 0, 0, 0),
+            Padding = new Thickness(8, 4, 8, 4),
+            Cursor = InputCursors.Hand,
+            Template = RoundedButtonTemplate(Color.FromRgb(0x25, 0x63, 0xEB), Color.FromRgb(0x3B, 0x82, 0xF6))
+        };
+        var host = new StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            Children = { field, done },
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 18, ShadowDepth = 6, Opacity = 0.45, Color = Colors.Black },
+            Tag = point
+        };
+        Canvas.SetLeft(host, point.X);
+        Canvas.SetTop(host, point.Y - 12);
+        ChromeSurface.Children.Add(host);
         _textEditor = editor;
+        _textEditorHost = host;
         SetNoActivate(false);
         Activate();
         editor.Focus();
         Keyboard.Focus(editor);
-        void Commit(object? _, RoutedEventArgs __)
+        done.Click += (_, _) => CommitTextEditor();
+        editor.LostKeyboardFocus += (_, e) =>
         {
             if (_textEditor != editor) return;
-            _textEditor = null;
-            editor.LostKeyboardFocus -= Commit;
-            if (string.IsNullOrWhiteSpace(editor.Text))
-            {
-                ShapeSurface.Children.Remove(editor);
-                SetNoActivate(true);
-                return;
-            }
-
-            var textBlock = new TextBlock
-            {
-                Text = editor.Text,
-                FontFamily = editor.FontFamily,
-                FontSize = editor.FontSize,
-                FontWeight = editor.FontWeight,
-                FontStyle = editor.FontStyle,
-                Foreground = editor.Foreground,
-                TextDecorations = editor.TextDecorations,
-                Background = Brushes.Transparent,
-                Padding = new Thickness(4, 2, 4, 2),
-                IsHitTestVisible = false
-            };
-
-            var luminance = (0.299 * _settings.Color.R + 0.587 * _settings.Color.G + 0.114 * _settings.Color.B);
-            textBlock.Effect = new System.Windows.Media.Effects.DropShadowEffect
-            {
-                BlurRadius = 3,
-                ShadowDepth = 1,
-                Opacity = 0.85,
-                Color = luminance > 160 ? Colors.Black : Colors.White
-            };
-
-            Canvas.SetLeft(textBlock, Canvas.GetLeft(editor));
-            Canvas.SetTop(textBlock, Canvas.GetTop(editor));
-            ShapeSurface.Children.Remove(editor);
-            ShapeSurface.Children.Add(textBlock);
-
-            _history.Add(textBlock);
-            _removed.Clear();
-            ScheduleFade(textBlock);
-            SetNoActivate(true);
-        }
-        editor.LostKeyboardFocus += Commit;
+            if (e.NewFocus is DependencyObject d && IsDescendant(host, d)) return;
+            CommitTextEditor();
+        };
         editor.PreviewKeyDown += (_, e) =>
         {
             if (e.Key == Key.Escape) { CancelTextEditor(); e.Handled = true; }
-            else if (e.Key == Key.Enter && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) { Commit(editor, e); Keyboard.ClearFocus(); e.Handled = true; }
+            else if (e.Key == Key.Enter && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) { CommitTextEditor(); e.Handled = true; }
+            else if (e.Key == Key.Enter)
+            {
+                var caret = editor.CaretIndex;
+                editor.Text = editor.Text.Insert(caret, Environment.NewLine);
+                editor.CaretIndex = caret + Environment.NewLine.Length;
+                e.Handled = true;
+            }
         };
+    }
+
+    private static ControlTemplate RoundedButtonTemplate(Color normal, Color hover)
+    {
+        var template = new ControlTemplate(typeof(System.Windows.Controls.Button));
+        var border = new FrameworkElementFactory(typeof(Border), "Surface");
+        border.SetValue(Border.BackgroundProperty, new SolidColorBrush(normal));
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+        border.SetValue(Border.PaddingProperty, new TemplateBindingExtension(System.Windows.Controls.Control.PaddingProperty));
+        border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
+        template.VisualTree = border;
+        var trigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        trigger.Setters.Add(new Setter(Border.BackgroundProperty, new SolidColorBrush(hover), "Surface"));
+        template.Triggers.Add(trigger);
+        return template;
+    }
+
+    private static bool IsDescendant(DependencyObject ancestor, DependencyObject node)
+    {
+        for (var current = node; current is not null; current = current is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(current) : LogicalTreeHelper.GetParent(current))
+            if (ReferenceEquals(current, ancestor)) return true;
+        return false;
     }
 
     private void CommitTextEditor()
     {
         if (_textEditor is null) return;
         var editor = _textEditor;
+        var host = _textEditorHost!;
         _textEditor = null;
-        if (string.IsNullOrWhiteSpace(editor.Text))
+        _textEditorHost = null;
+        ChromeSurface.Children.Remove(host);
+        if (!string.IsNullOrWhiteSpace(editor.Text))
         {
-            ShapeSurface.Children.Remove(editor);
-        }
-        else
-        {
+            var origin = (Point)host.Tag;
+            // Committed text: tool colour, semibold, soft dark shadow (design).
             var textBlock = new TextBlock
             {
                 Text = editor.Text,
-                FontFamily = editor.FontFamily,
-                FontSize = editor.FontSize,
-                FontWeight = editor.FontWeight,
-                FontStyle = editor.FontStyle,
-                Foreground = editor.Foreground,
-                TextDecorations = editor.TextDecorations,
+                FontFamily = new System.Windows.Media.FontFamily(_settings.FontFamily),
+                FontSize = _settings.FontSize,
+                FontWeight = _settings.TextBold ? FontWeights.Bold : FontWeights.SemiBold,
+                FontStyle = _settings.TextItalic ? FontStyles.Italic : FontStyles.Normal,
+                TextDecorations = _settings.TextUnderline ? TextDecorations.Underline : null,
+                Foreground = new SolidColorBrush(_settings.Color),
                 Background = Brushes.Transparent,
                 Padding = new Thickness(4, 2, 4, 2),
-                IsHitTestVisible = false
+                IsHitTestVisible = false,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 4, ShadowDepth = 0, Opacity = 0.6, Color = Colors.Black }
             };
-
-            var luminance = (0.299 * _settings.Color.R + 0.587 * _settings.Color.G + 0.114 * _settings.Color.B);
-            textBlock.Effect = new System.Windows.Media.Effects.DropShadowEffect
-            {
-                BlurRadius = 3,
-                ShadowDepth = 1,
-                Opacity = 0.85,
-                Color = luminance > 160 ? Colors.Black : Colors.White
-            };
-
-            Canvas.SetLeft(textBlock, Canvas.GetLeft(editor));
-            Canvas.SetTop(textBlock, Canvas.GetTop(editor));
-            ShapeSurface.Children.Remove(editor);
+            Canvas.SetLeft(textBlock, origin.X);
+            Canvas.SetTop(textBlock, origin.Y - _settings.FontSize * 0.2);
             ShapeSurface.Children.Add(textBlock);
-
-            _history.Add(textBlock);
-            _removed.Clear();
-            ScheduleFade(textBlock);
+            CommitAnnotation(textBlock);
         }
-        SetNoActivate(true);
+        Keyboard.ClearFocus();
+        SetNoActivate(_settings.Tool != ToolKind.Select);
     }
 
     private void CancelTextEditor()
     {
         if (_textEditor is null) return;
-        ShapeSurface.Children.Remove(_textEditor);
+        ChromeSurface.Children.Remove(_textEditorHost);
         _textEditor = null;
+        _textEditorHost = null;
         Keyboard.ClearFocus();
-        SetNoActivate(true);
+        SetNoActivate(_settings.Tool != ToolKind.Select);
     }
 
     private void SetNoActivate(bool enabled)
@@ -737,17 +781,7 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
             enabled ? style | NativeMethods.WsExNoActivate : style & ~NativeMethods.WsExNoActivate);
     }
 
-    private Ellipse CreateLaserDot()
-    {
-        var dot = new Ellipse
-        {
-            Width = 16, Height = 16, Fill = new SolidColorBrush(_settings.Color), IsHitTestVisible = false,
-            Stroke = new SolidColorBrush(Colors.White), StrokeThickness = 2.5,
-            Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = _settings.Color, BlurRadius = 24, ShadowDepth = 0, Opacity = 0.95 }
-        };
-        ShapeSurface.Children.Add(dot);
-        return dot;
-    }
+    // ------------------------------------------------------------------ Keyboard
 
     private void OverlayWindow_OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -756,13 +790,18 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
             if (e.Key == Key.Escape) { CancelTextEditor(); _manager?.DeactivateCurrentTool(ToolDeactivationReason.Escape); e.Handled = true; }
             return;
         }
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var isCtrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
+        var isShift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        var isAlt = (Keyboard.Modifiers & ModifierKeys.Alt) != 0;
 
-        if (e.Key == Key.Delete && _settings.Tool == ToolKind.Select && _selectedElement is not null)
+        if (_selection.Count > 0 && !isAlt)
         {
-            var removed = _selectedElement; Deselect(); ShapeSurface.Children.Remove(removed); _history.Add(new Removal(removed)); _removed.Clear(); e.Handled = true; return;
+            if (key is Key.Delete or Key.Back && !isCtrl) { DeleteSelection(); e.Handled = true; return; }
+            if (key == Key.D && isCtrl && !isShift) { DuplicateSelection(); e.Handled = true; return; }
         }
 
-        if (e.Key == Key.Escape)
+        if (key == Key.Escape)
         {
             if (_shapePreview is not null) CancelShapePreview();
             _manager?.DeactivateCurrentTool(ToolDeactivationReason.Escape);
@@ -770,52 +809,19 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
             return;
         }
 
-        var isCtrl = (Keyboard.Modifiers & ModifierKeys.Control) != 0;
-        var isShift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
-
-        if (isCtrl && e.Key == Key.Z) { _manager?.Undo(); e.Handled = true; return; }
-        if (isCtrl && e.Key == Key.Y) { _manager?.Redo(); e.Handled = true; return; }
-        if (isCtrl && isShift && e.Key == Key.Delete) { _manager?.Clear(); e.Handled = true; return; }
-
-        if (!isCtrl && !isShift && (Keyboard.Modifiers & ModifierKeys.Alt) == 0)
-        {
-            switch (e.Key)
-            {
-                case Key.P: _manager?.SetTool(ToolKind.Pen); _manager?.SetPenMode(PenMode.Ballpoint); e.Handled = true; break;
-                case Key.H: _manager?.SetTool(ToolKind.Highlighter); _manager?.SetPenMode(PenMode.Highlighter); e.Handled = true; break;
-                case Key.E: _manager?.SetTool(ToolKind.Eraser); e.Handled = true; break;
-                case Key.A: _manager?.SetTool(ToolKind.Shape); _settings.Shape = ShapeKind.Arrow; RefreshTool(); e.Handled = true; break;
-                case Key.R: _manager?.SetTool(ToolKind.Shape); _settings.Shape = ShapeKind.Rectangle; RefreshTool(); e.Handled = true; break;
-                case Key.O: _manager?.SetTool(ToolKind.Shape); _settings.Shape = ShapeKind.Ellipse; RefreshTool(); e.Handled = true; break;
-                case Key.T: _manager?.SetTool(ToolKind.Text); e.Handled = true; break;
-                case Key.L: _manager?.SetTool(ToolKind.Laser); e.Handled = true; break;
-                case Key.M: _manager?.SetTool(ToolKind.Spotlight); e.Handled = true; break;
-                
-                
-                case Key.D1: _manager?.SetTool(ToolKind.NumberMarker); e.Handled = true; break;
-            }
-        }
+        if (isCtrl && !isShift && key == Key.Z) { _manager?.Undo(); e.Handled = true; return; }
+        if (isCtrl && !isShift && key == Key.Y) { _manager?.Redo(); e.Handled = true; return; }
+        if (isCtrl && isShift && key == Key.Delete) { _manager?.Clear(); e.Handled = true; return; }
+        if (OverlayKeyRouter.TryHandle(key, Keyboard.Modifiers)) { e.Handled = true; }
     }
+
+    // ------------------------------------------------------------------ Lifecycle helpers
 
     private void CancelShapePreview()
     {
         if (_shapePreview is not null) ShapeSurface.Children.Remove(_shapePreview);
-        _shapePreview=null; _dragAnchor=null;
+        _shapePreview = null; _dragAnchor = null;
         if (Mouse.Captured == InputRoot) InputRoot.ReleaseMouseCapture();
-    }
-
-    private Point GetScaledPoint(Point point)
-    {
-        if (_manager == null) return point;
-        
-        // Check if zoom is active via the ToolbarWindow reference in manager or similar
-        // Since we don't have direct access to the zoom engine here, we check the state
-        // If the WindowsZoomEngine is active, we need to translate screen coordinates 
-        // to the magnified source coordinates.
-        
-        // This is a placeholder for the coordinate scaling logic 
-        // which will be fully integrated with the WindowsZoomEngine's current factor and origin.
-        return point; 
     }
 
     public void CancelActiveInteraction()
@@ -824,47 +830,29 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
         CancelShapePreview();
         CancelTextEditor();
         _erasedThisDrag.Clear();
-        if (_laserDot is not null) { ShapeSurface.Children.Remove(_laserDot); _laserDot=null; }
+        ClearLaserTrail();
         if (Mouse.Captured is not null) Mouse.Capture(null);
-        Deselect();
+        ClearSelection();
     }
 
-    private void SelectAt(Point point)
+    private static Rect BoundsOf(UIElement element, Visual ancestor)
     {
-        Deselect();
-        for(var i=ShapeSurface.Children.Count-1;i>=0;i--)
-        {
-            var element=ShapeSurface.Children[i];if(element==_selectionVisual||element==_laserDot)continue;
-            try { var local=VisualTreeHelper.GetDescendantBounds(element);if(local.IsEmpty&&element is FrameworkElement f)local=new Rect(0,0,f.ActualWidth,f.ActualHeight);var bounds=element.TransformToAncestor(ShapeSurface).TransformBounds(local);bounds.Inflate(8,8);if(!bounds.Contains(point))continue;_selectedElement=element;UpdateSelectionVisual();break; } catch(InvalidOperationException) { }
-        }
-    }
-
-    private void Deselect(){_selectedElement=null;_selectionAnchor=null;_selectionVisual.Visibility=Visibility.Collapsed;}
-    private static Vector GetOffset(UIElement element)=>element.RenderTransform is TranslateTransform t?new Vector(t.X,t.Y):default;
-    private static void SetOffset(UIElement element,Vector offset)=>element.RenderTransform=new TranslateTransform(offset.X,offset.Y);
-    private void UpdateSelectionVisual()
-    {
-        if(_selectedElement is null){_selectionVisual.Visibility=Visibility.Collapsed;return;}
-        var bounds=_selectedElement.TransformToAncestor(ShapeSurface).TransformBounds(VisualTreeHelper.GetDescendantBounds(_selectedElement));bounds.Inflate(4,4);
-        Canvas.SetLeft(_selectionVisual,bounds.Left);Canvas.SetTop(_selectionVisual,bounds.Top);_selectionVisual.Width=Math.Max(1,bounds.Width);_selectionVisual.Height=Math.Max(1,bounds.Height);_selectionVisual.Visibility=Visibility.Visible;
+        var local = VisualTreeHelper.GetDescendantBounds(element);
+        if (local.IsEmpty && element is FrameworkElement f) local = new Rect(0, 0, f.ActualWidth, f.ActualHeight);
+        return element.TransformToAncestor(ancestor).TransformBounds(local);
     }
 
     private bool TryEraseVector(Point point)
     {
-        const double tolerance=12;
-        for(var index=ShapeSurface.Children.Count-1;index>=0;index--)
+        const double tolerance = 12;
+        for (var index = ShapeSurface.Children.Count - 1; index >= 0; index--)
         {
-            if(ShapeSurface.Children[index] is not UIElement element || _erasedThisDrag.Contains(element)) continue;
+            if (ShapeSurface.Children[index] is not UIElement element || _erasedThisDrag.Contains(element)) continue;
             Rect bounds;
-            try
-            {
-                var local=VisualTreeHelper.GetDescendantBounds(element);
-                if(local.IsEmpty && element is FrameworkElement framework) local=new Rect(0,0,framework.ActualWidth,framework.ActualHeight);
-                bounds=element.TransformToAncestor(ShapeSurface).TransformBounds(local);
-            }
-            catch(InvalidOperationException) { continue; }
-            bounds.Inflate(tolerance,tolerance);
-            if(!bounds.Contains(point)) continue;
+            try { bounds = BoundsOf(element, ShapeSurface); }
+            catch (InvalidOperationException) { continue; }
+            bounds.Inflate(tolerance, tolerance);
+            if (!bounds.Contains(point)) continue;
             if (element is Path path && path.Data is not null)
             {
                 var localPoint = ShapeSurface.TranslatePoint(point, path);
@@ -882,43 +870,50 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
 
     private void UndoItem(object item)
     {
-        switch(item)
+        switch (item)
         {
-            case StrokeGroup group: foreach(var stroke in group.Strokes) RemoveAnnotation(stroke);break;
-            case MoveOperation move: SetOffset(move.Item,move.From);break;
+            case StrokeGroup group: foreach (var stroke in group.Strokes) RemoveAnnotation(stroke); break;
+            case MoveOperation move: SetOffset(move.Item, move.From); break;
             case Removal removal: RestoreAnnotation(removal.Item); break;
-            case ClearOperation clear: foreach(var annotation in clear.Items) RestoreAnnotation(annotation); break;
+            case ClearOperation clear: foreach (var annotation in clear.Items) RestoreAnnotation(annotation); break;
+            case EditOperation edit: edit.Undo(); break;
             default: RemoveAnnotation(item); break;
         }
     }
 
     private void RedoItem(object item)
     {
-        switch(item)
+        switch (item)
         {
-            case StrokeGroup group: foreach(var stroke in group.Strokes) RestoreAnnotation(stroke);break;
-            case MoveOperation move: SetOffset(move.Item,move.To);break;
+            case StrokeGroup group: foreach (var stroke in group.Strokes) RestoreAnnotation(stroke); break;
+            case MoveOperation move: SetOffset(move.Item, move.To); break;
             case Removal removal: RemoveAnnotation(removal.Item); break;
-            case ClearOperation clear: foreach(var annotation in clear.Items) RemoveAnnotation(annotation); break;
+            case ClearOperation clear: foreach (var annotation in clear.Items) RemoveAnnotation(annotation); break;
+            case EditOperation edit: edit.Redo(); break;
             default: RestoreAnnotation(item); break;
         }
     }
 
     private void RemoveAnnotation(object item)
     {
-        if(item is Stroke stroke) InkSurface.Strokes.Remove(stroke);
-        if(item is UIElement element) ShapeSurface.Children.Remove(element);
+        if (item is Stroke stroke) InkSurface.Strokes.Remove(stroke);
+        if (item is UIElement element) ShapeSurface.Children.Remove(element);
         _expirations.Remove(item);
     }
 
     private void RestoreAnnotation(object item)
     {
-        if(item is Stroke stroke && !InkSurface.Strokes.Contains(stroke)) InkSurface.Strokes.Add(stroke);
-        if(item is UIElement element && !ShapeSurface.Children.Contains(element)) ShapeSurface.Children.Add(element);
+        if (item is Stroke stroke && !InkSurface.Strokes.Contains(stroke)) InkSurface.Strokes.Add(stroke);
+        if (item is UIElement element && !ShapeSurface.Children.Contains(element)) ShapeSurface.Children.Add(element);
     }
 
-    private sealed record MoveOperation(UIElement Item,Vector From,Vector To);
+    private static Vector GetOffset(UIElement element) => element.RenderTransform is TranslateTransform t ? new Vector(t.X, t.Y) : default;
+    private static void SetOffset(UIElement element, Vector offset) => element.RenderTransform = new TranslateTransform(offset.X, offset.Y);
+
+    private sealed record MoveOperation(UIElement Item, Vector From, Vector To);
     private sealed record StrokeGroup(StrokeCollection Strokes);
+    /// <summary>Generic undoable edit (selection move, recolor, thickness, duplicate, delete).</summary>
+    private sealed record EditOperation(Action Undo, Action Redo);
 
     private void ScheduleFade(object item)
     {
@@ -931,25 +926,26 @@ _fadeTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = Tim
 
     private void FadeTimer_OnTick(object? sender, EventArgs e)
     {
-        var now=DateTimeOffset.UtcNow;
-        foreach(var pair in _expirations.ToArray())
+        var now = DateTimeOffset.UtcNow;
+        foreach (var pair in _expirations.ToArray())
         {
-            var elapsed=now-pair.Value.Start;
-            if(pair.Key is UIElement element && elapsed > pair.Value.Duration*.75)
-                element.Opacity=pair.Value.OriginalOpacity*Math.Max(0,1-(elapsed-pair.Value.Duration*.75).TotalMilliseconds/(pair.Value.Duration.TotalMilliseconds*.25));
-            if(pair.Key is Stroke fadingStroke && elapsed > pair.Value.Duration*.75)
+            var elapsed = now - pair.Value.Start;
+            if (pair.Key is UIElement element && elapsed > pair.Value.Duration * .75)
+                element.Opacity = pair.Value.OriginalOpacity * Math.Max(0, 1 - (elapsed - pair.Value.Duration * .75).TotalMilliseconds / (pair.Value.Duration.TotalMilliseconds * .25));
+            if (pair.Key is Stroke fadingStroke && elapsed > pair.Value.Duration * .75)
             {
-                var factor=Math.Max(0,1-(elapsed-pair.Value.Duration*.75).TotalMilliseconds/(pair.Value.Duration.TotalMilliseconds*.25));
-                var color=fadingStroke.DrawingAttributes.Color;
-                fadingStroke.DrawingAttributes.Color=Color.FromArgb((byte)(pair.Value.OriginalAlpha*factor),color.R,color.G,color.B);
+                var factor = Math.Max(0, 1 - (elapsed - pair.Value.Duration * .75).TotalMilliseconds / (pair.Value.Duration.TotalMilliseconds * .25));
+                var color = fadingStroke.DrawingAttributes.Color;
+                fadingStroke.DrawingAttributes.Color = Color.FromArgb((byte)(pair.Value.OriginalAlpha * factor), color.R, color.G, color.B);
             }
-            if(elapsed < pair.Value.Duration) continue;
-            if(pair.Key is Stroke stroke) InkSurface.Strokes.Remove(stroke);
-            if(pair.Key is UIElement visual) ShapeSurface.Children.Remove(visual);
+            if (elapsed < pair.Value.Duration) continue;
+            if (pair.Key is Stroke stroke) InkSurface.Strokes.Remove(stroke);
+            if (pair.Key is UIElement visual) ShapeSurface.Children.Remove(visual);
+            _selection.Remove(pair.Key);
             _history.Remove(pair.Key); _expirations.Remove(pair.Key);
         }
-        if(_expirations.Count==0) _fadeTimer.Stop();
-        if(_settings.Tool==ToolKind.Cursor && !HasVisibleContent) Hide();
+        if (_expirations.Count == 0) _fadeTimer.Stop();
+        if (_settings.Tool == ToolKind.Cursor && !HasVisibleContent) Hide();
     }
 
     private sealed record Removal(object Item);

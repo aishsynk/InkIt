@@ -4,7 +4,11 @@
              ShutdownMode="OnExplicitShutdown">
   <Application.Resources>
     <ResourceDictionary>
-      <ResourceDictionary.MergedDictionaries><ResourceDictionary Source="UI/Icons/FluentIconResources.xaml"/></ResourceDictionary.MergedDictionaries>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="UI/Icons/FluentIconResources.xaml"/>
+        <ResourceDictionary Source="UI/Icons/LucideIcons.xaml"/>
+        <ResourceDictionary Source="UI/Theme/DesignStyles.xaml"/>
+      </ResourceDictionary.MergedDictionaries>
     <sys:Double x:Key="Palette.MainWidth" xmlns:sys="clr-namespace:System;assembly=System.Runtime">30</sys:Double>
     <sys:Double x:Key="Toolbar.Button" xmlns:sys="clr-namespace:System;assembly=System.Runtime">23</sys:Double>
     <sys:Double x:Key="Toolbar.Icon" xmlns:sys="clr-namespace:System;assembly=System.Runtime">14</sys:Double>
@@ -102,27 +106,7 @@
         </Setter.Value>
       </Setter>
     </Style>
-    <Style TargetType="ToolTip">
-      <Setter Property="HasDropShadow" Value="False"/>
-      <Setter Property="Background" Value="Transparent"/>
-      <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Padding" Value="0"/>
-      <Setter Property="Foreground" Value="#FFF7F8FA"/>
-      <Setter Property="FontFamily" Value="Segoe UI Variable Text"/>
-      <Setter Property="FontSize" Value="11.5"/>
-      <Setter Property="Template">
-        <Setter.Value>
-          <ControlTemplate TargetType="ToolTip">
-            <Border Background="#EB181A20" BorderBrush="#30FFFFFF" BorderThickness="1" CornerRadius="6" Padding="8,4" SnapsToDevicePixels="True">
-              <Border.Effect>
-                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.35" Color="#000000" Direction="270" />
-              </Border.Effect>
-              <ContentPresenter Margin="0"/>
-            </Border>
-          </ControlTemplate>
-        </Setter.Value>
-      </Setter>
-    </Style>
+    <Style TargetType="ToolTip" BasedOn="{StaticResource Ink.ToolTip}"/>
     <Style TargetType="Slider">
       <Setter Property="Height" Value="22"/><Setter Property="Width" Value="200"/><Setter Property="HorizontalAlignment" Value="Left"/><Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
       <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Slider"><Grid Margin="3,0"><Track x:Name="PART_Track"><Track.DecreaseRepeatButton><RepeatButton Command="Slider.DecreaseLarge" Height="{StaticResource Slider.Track}" VerticalAlignment="Center" Background="{DynamicResource AccentBrush}" BorderThickness="0"/></Track.DecreaseRepeatButton><Track.Thumb><Thumb Width="{StaticResource Slider.Thumb}" Height="{StaticResource Slider.Thumb}"><Thumb.Template><ControlTemplate TargetType="Thumb"><Ellipse Fill="{DynamicResource ThumbBrush}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.5"/></ControlTemplate></Thumb.Template></Thumb></Track.Thumb><Track.IncreaseRepeatButton><RepeatButton Command="Slider.IncreaseLarge" Height="{StaticResource Slider.Track}" VerticalAlignment="Center" Background="{DynamicResource TrackBrush}" BorderThickness="0"/></Track.IncreaseRepeatButton></Track></Grid></ControlTemplate></Setter.Value></Setter>

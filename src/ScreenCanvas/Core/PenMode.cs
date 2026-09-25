@@ -1,5 +1,6 @@
 namespace ScreenCanvas.Core;
 
+// Persisted by name in tool profiles; append new modes, never rename.
 public enum PenMode
 {
     Ballpoint,
@@ -15,5 +16,9 @@ public enum PenMode
     Dashed,
     Dotted,
     Pressure,
-    Disappearing
+    Disappearing,
+    Airbrush,
+    Chalk,
+    Crayon,
+    Rainbow
 }

@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using ScreenCanvas.Interop;
 using Brushes = System.Windows.Media.Brushes;
 using Color = System.Windows.Media.Color;
+using Colors = System.Windows.Media.Colors;
 using HorizontalAlignment = System.Windows.HorizontalAlignment;
 
 namespace ScreenCanvas.Presentation;
@@ -161,18 +162,13 @@ public sealed class KeyVisualizerService : IDisposable
 
 internal sealed class KeyVisualizerWindow : Window
 {
-    private readonly TextBlock _textBlock = new();
-    private readonly Border _card;
-    private readonly System.Windows.Threading.DispatcherTimer _fadeTimer;
+    private readonly StackPanel _keys = new() { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+    private readonly List<string> _recent = [];
+    private readonly StackPanel _root;
+    private readonly DispatcherTimer _idleTimer = new() { Interval = TimeSpan.FromSeconds(4) };
 
     internal KeyVisualizerWindow()
     {
-        _textBlock.FontSize = 18;
-        _textBlock.FontWeight = FontWeights.SemiBold;
-        _textBlock.Foreground = Brushes.White;
-        _textBlock.HorizontalAlignment = HorizontalAlignment.Center;
-        _textBlock.VerticalAlignment = VerticalAlignment.Center;
-
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -182,26 +178,25 @@ internal sealed class KeyVisualizerWindow : Window
         Topmost = true;
         SizeToContent = SizeToContent.WidthAndHeight;
 
-        _card = new Border
+        // Design: header chip "Key Visualizer (WH_KEYBOARD_LL)" above the last three key chips.
+        var header = UI.Theme.DK.Surface(
+            UI.Theme.DK.H(4,
+                new UI.Controls.LucideIcon("Keyboard", 12) { Foreground = UI.Theme.Tw.B(UI.Theme.Tw.Blue400) },
+                UI.Theme.DK.Caps("Key Visualizer (WH_KEYBOARD_LL)", 10, UI.Theme.Tw.B(UI.Theme.Tw.Slate400), FontWeights.Normal)),
+            UI.Theme.Tw.B(UI.Theme.Tw.Slate900, 0.8), UI.Theme.Tw.B(UI.Theme.Tw.Slate700, 0.6), 999, new Thickness(8, 2, 8, 2));
+        ((TextBlock)((StackPanel)header.Child).Children[1]).FontFamily = UI.Theme.DK.Mono;
+        header.HorizontalAlignment = HorizontalAlignment.Right;
+        header.Effect = UI.Theme.DK.Shadow(12, 3, 0.4);
+        _keys.Margin = new Thickness(0, 6, 0, 0);
+        _root = new StackPanel { Margin = new Thickness(16), Children = { header, _keys }, Opacity = 0 };
+        Content = _root;
+        _idleTimer.Tick += (_, _) =>
         {
-            Background = new SolidColorBrush(Color.FromArgb(220, 24, 24, 27)),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(14, 8, 14, 8),
-            Margin = new Thickness(10),
-            Child = _textBlock,
-            Opacity = 0
+            _idleTimer.Stop();
+            _recent.Clear();
+            _root.BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(250)));
         };
-
-        Content = _card;
-
-        _fadeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
-        _fadeTimer.Tick += (_, _) =>
-        {
-            _fadeTimer.Stop();
-            _card.Opacity = 0;
-        };
-
-        Loaded += (_, _) => PositionWindow();
+        SizeChanged += (_, _) => PositionWindow();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -215,15 +210,26 @@ internal sealed class KeyVisualizerWindow : Window
 
     private void PositionWindow()
     {
-        Left = SystemParameters.WorkArea.Right - 280;
-        Top = SystemParameters.WorkArea.Bottom - 100;
+        Left = SystemParameters.WorkArea.Right - ActualWidth - 8;
+        Top = SystemParameters.WorkArea.Bottom - ActualHeight - 32;
     }
 
     internal void DisplayKey(string text)
     {
-        _textBlock.Text = text;
-        _card.Opacity = 1;
-        _fadeTimer.Stop();
-        _fadeTimer.Start();
+        _recent.Add(text);
+        if (_recent.Count > 3) _recent.RemoveRange(0, _recent.Count - 3);
+        _keys.Children.Clear();
+        foreach (var key in _recent)
+        {
+            var chip = UI.Theme.DK.Surface(UI.Theme.DK.Text(key, 12, UI.Theme.Tw.B(Colors.White), FontWeights.SemiBold, mono: true),
+                UI.Theme.Tw.B(UI.Theme.Tw.Slate900, 0.9), UI.Theme.Tw.B(UI.Theme.Tw.Slate700), 8, new Thickness(10, 4, 10, 4));
+            chip.Margin = new Thickness(6, 0, 0, 0);
+            chip.Effect = UI.Theme.DK.Shadow(16, 4, 0.45);
+            _keys.Children.Add(chip);
+        }
+        _root.BeginAnimation(OpacityProperty, null);
+        _root.Opacity = 1;
+        _idleTimer.Stop();
+        _idleTimer.Start();
     }
 }

@@ -21,6 +21,15 @@ public interface IOverlayManager
     event EventHandler? ToolChanged;
     event EventHandler? BoardChanged;
     event EventHandler? InteractionStarted;
+    /// <summary>Raised when canvas options (snap, grid, modifiers, curtain, spotlight, board) change.</summary>
+    event EventHandler? OptionsChanged;
+    /// <summary>Raised when a two-finger pinch on the overlay asks for a new magnifier factor.</summary>
+    event EventHandler<double>? PinchZoomRequested;
+    void RequestPinchZoom(double factor);
+    BoardKind CurrentBoard { get; }
+    void SetBoardKind(BoardKind kind);
+    /// <summary>Applies a change to the shared tool settings, refreshes overlays and (optionally) persists it.</summary>
+    void UpdateOptions(Action<ToolSettings> change, bool persist = true);
     void NotifyInteractionStarted();
     IUiExclusionRegionService? ExclusionService { get; set; }
     MediaColor? CurrentBoardColor { get; }
@@ -40,6 +49,8 @@ public interface IOverlayManager
     void SetColor(MediaColor color);
     void SetThickness(double thickness);
     void SetOpacity(byte opacity);
+    void SetPressureEnabled(bool enabled);
+    void SetShapeFill(bool enabled);
     void SetFade(TimeSpan? duration);
     void ToggleDrawing();
     void Undo();
