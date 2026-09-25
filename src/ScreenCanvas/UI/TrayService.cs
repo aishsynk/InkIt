@@ -11,19 +11,34 @@ public sealed class TrayService : IDisposable
     {
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Show toolbar", null, (_, _) => showToolbar());
-        menu.Items.Add("Toggle annotation", null, (_, _) => annotate());
-        menu.Items.Add("Clear annotations", null, (_, _) => clear());
+        menu.Items.Add("Start / stop drawing", null, (_, _) => annotate());
+        menu.Items.Add("Clear all drawings", null, (_, _) => clear());
         menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add("Exit", null, (_, _) => exit());
+        menu.Items.Add("Exit InkIt", null, (_, _) => exit());
 
         _icon = new Forms.NotifyIcon
         {
-            Text = "ScreenCanvas",
-            Icon = SystemIcons.Information,
+            Text = "InkIt - double-click to show the toolbar",
+            Icon = LoadAppIcon(),
             ContextMenuStrip = menu,
             Visible = true
         };
         _icon.DoubleClick += (_, _) => showToolbar();
+    }
+
+    private static Icon LoadAppIcon()
+    {
+        try
+        {
+            var info = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Assets/InkIt.ico"));
+            if (info is not null)
+            {
+                using var stream = info.Stream;
+                return new Icon(stream, Forms.SystemInformation.SmallIconSize);
+            }
+        }
+        catch (System.IO.IOException) { }
+        return SystemIcons.Application;
     }
 
     public void Dispose()

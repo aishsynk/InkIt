@@ -312,21 +312,26 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             Add(expand);
             return;
         }
-        Add(SmallButton("RotateCw", 14, "Toggle Orientation (Ctrl+Shift+O)", ToggleOrientation));
-        _snapButton = SmallButton("Magnet", 14, string.Empty, () => _overlay.UpdateOptions(o => o.SnapToGrid = !o.SnapToGrid));
-        Add(_snapButton);
-        Add(BuildMultiToolButton());
         Add(Divider());
+        // Tools in their groups (draw | add | present | edit | find); a divider marks each change of group.
+        string? group = null;
         foreach (var state in _layout.Where(s => s.Visible))
         {
             if (ToolbarCatalog.Find(state.Id) is not { } def) continue;
+            if (group is not null && def.Group != group) Add(Divider());
+            group = def.Group;
             var button = CreateToolButton(def);
             _toolButtons[def.Id] = button;
             Add(button);
         }
         Add(Divider());
-        _customizeButton = DK.Button(new LucideIcon("Sliders", 16), Tw.B(Colors.Transparent), "Ink.ToolbarMuted", "Ink.Hover", "Ink.Text200", 12, new Thickness(6));
-        _customizeButton.ToolTip = "Customize Toolbar (Drag-and-drop tools, presets, show/hide)";
+        // Expert switches sit at the end, away from the everyday tools.
+        _snapButton = SmallButton("Magnet", 16, string.Empty, () => _overlay.UpdateOptions(o => o.SnapToGrid = !o.SnapToGrid));
+        Add(_snapButton);
+        Add(BuildMultiToolButton());
+        Add(SmallButton(_isHorizontal ? "ArrowUpDown" : "ArrowLeftRight", 16, "Turn the toolbar " + (_isHorizontal ? "upright" : "sideways") + " (Ctrl+Shift+O)", ToggleOrientation));
+        _customizeButton = DK.Button(new LucideIcon("SlidersHorizontal", 16) { StrokeWidth = 1.75 }, Tw.B(Colors.Transparent), "Ink.ToolbarMuted", "Ink.Hover", "Ink.Text200", 12, new Thickness(6));
+        _customizeButton.ToolTip = "Customise the toolbar - choose, hide and reorder buttons";
         _customizeButton.Click += (_, _) => ToggleCustomize();
         Add(_customizeButton);
         RefreshItemStates();
@@ -343,10 +348,22 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
 
     private FrameworkElement BuildGrip()
     {
-        var grip = DK.Button(new LucideIcon("GripVertical", 16), Tw.B(Colors.Transparent), "Ink.GripText", "Ink.Hover", "Ink.Text300", 8,
-            _isHorizontal ? new Thickness(4, 8, 4, 8) : new Thickness(10, 6, 10, 6));
+        // The InkIt logo doubles as the drag handle: the wordmark across, the "i" mark when upright.
+        var logoFile = _isHorizontal
+            ? (ThemeManager.IsDark ? "InkItLogoWhite.png" : "InkItLogo.png")
+            : (ThemeManager.IsDark ? "InkItMarkWhite.png" : "InkItMarkDark.png");
+        var logo = new System.Windows.Controls.Image
+        {
+            Source = new System.Windows.Media.Imaging.BitmapImage(new Uri($"pack://application:,,,/Assets/{logoFile}")),
+            Height = _isHorizontal ? 26 : 28,
+            Stretch = Stretch.Uniform,
+            IsHitTestVisible = false
+        };
+        RenderOptions.SetBitmapScalingMode(logo, BitmapScalingMode.HighQuality);
+        var grip = DK.Button(logo, Tw.B(Colors.Transparent), "Ink.GripText", "Ink.Hover", "Ink.Text300", 8,
+            _isHorizontal ? new Thickness(8, 5, 8, 5) : new Thickness(6));
         grip.Cursor = Cursors.SizeAll;
-        grip.ToolTip = "Drag Toolbar (Click & Drag)";
+        grip.ToolTip = "InkIt - drag here to move the toolbar";
         grip.PreviewMouseLeftButtonDown += (_, e) =>
         {
             e.Handled = true;
@@ -368,7 +385,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
 
     private Button SmallButton(string icon, double iconSize, string tooltip, Action click)
     {
-        var b = DK.Button(new LucideIcon(icon, iconSize), Tw.B(Colors.Transparent), "Ink.ToolbarMuted", "Ink.Hover", "Ink.Text200", 8, new Thickness(6));
+        var b = DK.Button(new LucideIcon(icon, iconSize) { StrokeWidth = 1.75 }, Tw.B(Colors.Transparent), "Ink.ToolbarMuted", "Ink.Hover", "Ink.Text200", 8, new Thickness(6));
         if (!string.IsNullOrEmpty(tooltip)) b.ToolTip = tooltip;
         b.Click += (_, _) => click();
         return b;
@@ -385,7 +402,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
 
     private FrameworkElement BuildMultiToolButton()
     {
-        _multiButton = DK.Button(new LucideIcon("Sparkles", 14), Tw.B(Colors.Transparent), "Ink.ToolbarMuted", "Ink.Hover", "Ink.Text200", 8, new Thickness(6));
+        _multiButton = DK.Button(new LucideIcon("WandSparkles", 16) { StrokeWidth = 1.75 }, Tw.B(Colors.Transparent), "Ink.ToolbarMuted", "Ink.Hover", "Ink.Text200", 8, new Thickness(6));
         _multiButton.ToolTip = "Multi-Tool Mode (Stack simultaneous tools: Laser Trail, Spotlight Follow, Grid Magnet, Auto-Shape)";
         _multiButton.Click += (_, _) => ToggleMultiTool();
         _multiBadgeText = new TextBlock { FontSize = 8, FontWeight = FontWeights.Bold, FontFamily = DK.Mono, Foreground = Tw.B(Colors.White), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
@@ -409,13 +426,13 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         }
         else
         {
-            var grid = new Grid { Width = 16, Height = 16 };
-            grid.Children.Add(new LucideIcon(def.Icon, 16));
+            var grid = new Grid { Width = 18, Height = 18 };
+            grid.Children.Add(new LucideIcon(def.Icon, 18) { StrokeWidth = 1.75 });
             content = grid;
         }
-        var button = DK.Button(content, Tw.B(Colors.Transparent), "Ink.ToolbarText", "Ink.Hover", "Ink.Text", 12, new Thickness(8));
+        var button = DK.Button(content, Tw.B(Colors.Transparent), "Ink.ToolbarText", "Ink.Hover", "Ink.Text", 12, new Thickness(def.Id == "color" ? 8 : 7));
         button.Tag = def.Id;
-        button.ToolTip = def.Id == "select" ? def.Tooltip : $"{def.Tooltip} (Drag to reorder)";
+        button.ToolTip = def.Tooltip;
         AutomationPropertiesHelper.SetName(button, def.Label + (def.Shortcut is null ? string.Empty : $" ({def.Shortcut})"));
         button.Name = def.Id.Replace('.', '_') + "Button";
         button.Click += (_, _) => OnItemClick(def.Id);

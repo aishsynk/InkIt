@@ -23,6 +23,9 @@ EXTRA_ICONS = [
     "Highlighter", "Eraser", "Shapes", "MousePointer", "Square", "Circle", "Diamond", "ArrowRight",
     "MoveHorizontal", "SquareDot", "ScanLine", "PanelTopClose", "FileText", "PauseCircle", "ShieldAlert",
     "Clock", "Zap", "Info", "Image", "Presentation", "Hash", "CaseSensitive", "LogOut",
+    # Refined toolbar set (2026-09-26)
+    "MousePointer2", "PenLine", "Flashlight", "CircleDot", "SquareDashedMousePointer", "LayoutGrid",
+    "WandSparkles", "SlidersHorizontal", "ArrowLeftRight", "ArrowUpDown",
 ]
 
 ICON_IMPORT = re.compile(r"import\s*\{([^}]*)\}\s*from\s*'lucide-react'", re.S)

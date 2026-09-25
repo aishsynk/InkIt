@@ -19,5 +19,10 @@
   <ItemGroup>
     <Resource Include="Assets\InkIt.png" />
     <Resource Include="Assets\InkIt.ico" />
+    <Resource Include="Assets\InkItLogo.png" />
+    <Resource Include="Assets\InkItLogoWhite.png" />
+    <Resource Include="Assets\InkItMark.png" />
+    <Resource Include="Assets\InkItMarkWhite.png" />
+    <Resource Include="Assets\InkItMarkDark.png" />
   </ItemGroup>
 </Project>
