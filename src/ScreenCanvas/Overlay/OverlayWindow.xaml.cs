@@ -74,10 +74,10 @@ public partial class OverlayWindow : Window
         MouseMove += OnMouseMove;
         MouseLeave += (_, _) => HidePointerEffects();
         PreviewKeyDown += OverlayWindow_OnPreviewKeyDown;
-        SizeChanged += (_, _) => RefreshOptions();
+        SizeChanged += (_, _) => { RefreshOptions(); PlaceStatusPill(); };
         InitializeInputDevices();
         InitializeEffects();
-        Loaded += (_, _) => { RefreshTool(); RefreshOptions(); };
+        Loaded += (_, _) => { RefreshTool(); RefreshOptions(); PlaceStatusPill(); };
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -833,6 +833,16 @@ public partial class OverlayWindow : Window
         ClearLaserTrail();
         if (Mouse.Captured is not null) Mouse.Capture(null);
         ClearSelection();
+    }
+
+    // Keeps the status pill above the taskbar: the overlay spans the whole monitor, the pill belongs to the work area.
+    private void PlaceStatusPill()
+    {
+        var screen = System.Windows.Forms.Screen.AllScreens.FirstOrDefault(s => s.DeviceName == _display.DeviceName);
+        if (screen is null) return;
+        var scale = VisualTreeHelper.GetDpi(this).DpiScaleY;
+        var inset = Math.Max(0, screen.Bounds.Bottom - screen.WorkingArea.Bottom) / scale;
+        StatusPill.Margin = new Thickness(12, 0, 0, 8 + inset);
     }
 
     private static Rect BoundsOf(UIElement element, Visual ancestor)

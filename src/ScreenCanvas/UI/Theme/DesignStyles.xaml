@@ -20,18 +20,22 @@
     <Setter Property="Template">
       <Setter.Value>
         <ControlTemplate TargetType="Button">
-          <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                  BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}"
-                  CornerRadius="{Binding (t:Ui.CornerRadius), RelativeSource={RelativeSource TemplatedParent}}"
-                  TextElement.Foreground="{TemplateBinding Foreground}" SnapsToDevicePixels="True">
-            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="False"/>
-          </Border>
+          <!-- The transparent root keeps the whole button hit-testable whatever the Surface background is,
+               so hover cannot flap when a hover brush is transparent or unset. -->
+          <Grid Background="Transparent">
+            <Border x:Name="Surface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}"
+                    CornerRadius="{Binding Path=(t:Ui.CornerRadius), RelativeSource={RelativeSource TemplatedParent}}"
+                    TextElement.Foreground="{TemplateBinding Foreground}" SnapsToDevicePixels="True">
+              <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="False"/>
+            </Border>
+          </Grid>
           <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-              <Setter TargetName="Surface" Property="Background" Value="{Binding (t:Ui.HoverBackground), RelativeSource={RelativeSource TemplatedParent}}"/>
-              <Setter TargetName="Surface" Property="TextElement.Foreground" Value="{Binding (t:Ui.HoverForeground), RelativeSource={RelativeSource TemplatedParent}}"/>
-              <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding (t:Ui.HoverBorderBrush), RelativeSource={RelativeSource TemplatedParent}}"/>
+              <Setter TargetName="Surface" Property="Background" Value="{Binding Path=(t:Ui.HoverBackground), RelativeSource={RelativeSource TemplatedParent}}"/>
+              <Setter TargetName="Surface" Property="TextElement.Foreground" Value="{Binding Path=(t:Ui.HoverForeground), RelativeSource={RelativeSource TemplatedParent}}"/>
+              <Setter TargetName="Surface" Property="BorderBrush" Value="{Binding Path=(t:Ui.HoverBorderBrush), RelativeSource={RelativeSource TemplatedParent}}"/>
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
               <Setter TargetName="Surface" Property="Opacity" Value="0.2"/>
@@ -175,7 +179,7 @@
               <Setter TargetName="Hint" Property="Visibility" Value="Visible"/>
             </Trigger>
             <Trigger Property="IsKeyboardFocused" Value="True">
-              <Setter TargetName="Frame" Property="BorderBrush" Value="{Binding (t:Ui.HoverBorderBrush), RelativeSource={RelativeSource TemplatedParent}}"/>
+              <Setter TargetName="Frame" Property="BorderBrush" Value="{Binding Path=(t:Ui.HoverBorderBrush), RelativeSource={RelativeSource TemplatedParent}}"/>
             </Trigger>
           </ControlTemplate.Triggers>
         </ControlTemplate>

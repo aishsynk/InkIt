@@ -105,6 +105,17 @@ public partial class App : System.Windows.Application
                 }
             }
             toolbar.CloseMenus();
+            foreach (var theme in new[] { AppTheme.Dark, AppTheme.Light })
+            {
+                ThemeManager.SetPreference(theme);
+                var settings = toolbar.CreateSettingsWindow();
+                settings.Show();
+                settings.ShowHotkeysTab();
+                settings.BeginAnimation(UIElement.OpacityProperty, null);
+                settings.Opacity = 1;
+                Save(settings, $"qa_settings_hotkeys_{theme.ToString().ToLowerInvariant()}.png");
+                settings.Close();
+            }
             Shutdown();
         }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
     }

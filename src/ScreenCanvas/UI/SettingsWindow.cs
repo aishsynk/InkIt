@@ -86,6 +86,9 @@ public sealed class SettingsWindow : ModalHost
 
     private void Save() => _store.SaveAsync(_settings).GetAwaiter().GetResult();
 
+    /// <summary>QA capture only: switches to the Hotkeys tab without input.</summary>
+    internal void ShowHotkeysTab() { _tab = Tab.Hotkeys; Render(); }
+
     private void Render()
     {
         _nav.Children.Clear();
@@ -170,7 +173,7 @@ public sealed class SettingsWindow : ModalHost
         }).ToList();
 
         var dpiBox = DK.Surface(DK.Between(DK.Text("Sub-pixel vector DPI recalculation enabled", 12, "Ink.Text300"),
-                DK.Chip("Active", Tw.B(Tw.Emerald500, 0.2), Tw.B(Tw.Emerald300), Tw.B(Colors.Transparent), 10, 4, new Thickness(8, 2, 8, 2))),
+                DK.Chip("Active", Tw.B(Tw.Emerald500, 0.2), "Ink.SuccessText", Tw.B(Colors.Transparent), 10, 4, new Thickness(8, 2, 8, 2))),
             "Ink.Raised40", "Ink.Divider", 12, new Thickness(12));
 
         return DK.V(0,
@@ -210,11 +213,14 @@ public sealed class SettingsWindow : ModalHost
 
     private UIElement Hotkeys()
     {
+        var badge = DK.Surface(DK.H(4, new LucideIcon("Shield", 12) { Foreground = Tw.B(Tw.Red400), VerticalAlignment = VerticalAlignment.Center },
+                DK.Text("Protected Alt+Shift+X", 10, "Ink.DangerText")),
+            "Ink.DangerBg", "Ink.DangerBorder", 999, new Thickness(8, 2, 8, 2));
+        badge.VerticalAlignment = VerticalAlignment.Top;
         var header = DK.Between(
             DK.V(2, DK.Text("Global Hotkey Dispatcher", 14, "Ink.Text", FontWeights.SemiBold),
                 CodeNote(("Managed by ", false), ("HotkeyManager.cs", true), (" via Win32 ", false), ("RegisterHotKey", true), (". Click a shortcut to rebind it.", false))),
-            DK.Surface(DK.H(4, new LucideIcon("Shield", 12) { Foreground = Tw.B(Tw.Red400) }, DK.Text("Protected Alt+Shift+X", 10, Tw.B(Tw.Red300))),
-                Tw.B(Tw.Red950, 0.8), Tw.B(Tw.Red800), 999, new Thickness(8, 2, 8, 2)));
+            badge);
         header.Margin = new Thickness(0, 0, 0, 16);
 
         var table = new Grid();
@@ -240,8 +246,8 @@ public sealed class SettingsWindow : ModalHost
             table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             Cell(DK.Text(binding.Action, 12, "Ink.Text", FontWeights.Medium), row, 0, false);
             var capturing = _capturingAction == binding.Action;
-            var keysText = capturing ? "Press keys…" : binding.DisplayText.Replace(", ", "+").Replace("Control", "Ctrl");
-            var kbd = DK.Kbd(keysText, capturing ? Tw.B(Tw.Amber300) : Tw.B(Tw.Blue300), "Ink.Kbd950", capturing ? Tw.B(Tw.Amber500) : "Ink.BorderStrong", 12, new Thickness(8, 2, 8, 2));
+            var keysText = capturing ? "Press keys…" : binding.DisplayText;
+            var kbd = DK.Kbd(keysText, capturing ? Tw.B(Tw.Amber300) : "Ink.KbdText", "Ink.Kbd950", capturing ? Tw.B(Tw.Amber500) : "Ink.BorderStrong", 12, new Thickness(8, 2, 8, 2));
             FrameworkElement keysCell = kbd;
             if (!binding.Protected)
             {

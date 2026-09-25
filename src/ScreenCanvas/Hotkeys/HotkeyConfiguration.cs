@@ -5,7 +5,19 @@ namespace ScreenCanvas.Hotkeys;
 public sealed record HotkeyBinding(string Action, ModifierKeys Modifiers, Key Key, bool Protected = false)
 {
     public bool IsEmpty => Key == Key.None;
-    public string DisplayText => IsEmpty ? "Unassigned" : $"{Modifiers}+{Key}".Replace("None+", string.Empty);
+    public string DisplayText => IsEmpty ? "Unassigned" : $"{Modifiers}+{KeyName(Key)}".Replace("None+", string.Empty).Replace(", ", "+").Replace("Control", "Ctrl");
+
+    private static string KeyName(Key key) => key switch
+    {
+        >= Key.D0 and <= Key.D9 => ((char)('0' + (key - Key.D0))).ToString(),
+        >= Key.NumPad0 and <= Key.NumPad9 => "Num" + (key - Key.NumPad0),
+        Key.Delete => "Del",
+        Key.Escape => "Esc",
+        Key.Return => "Enter",
+        Key.OemComma => ",",
+        Key.OemPeriod => ".",
+        _ => key.ToString()
+    };
 }
 
 public sealed class HotkeyConfiguration

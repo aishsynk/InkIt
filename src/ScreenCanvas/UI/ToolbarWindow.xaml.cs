@@ -651,6 +651,9 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
     private void OnItemClick(string id)
     {
         var s = _overlay.Settings;
+        // Live zoom is a tool in the design: picking any other tool ends it.
+        if (IsZoomActive && id is "cursor" or "select" or "pen" or "highlighter" or "eraser" or "shape" or "text" or "marker" or "laser" or "spotlight")
+            SetZoomFactor(1);
         switch (id)
         {
             case "cursor": CloseMenus(); _overlay.SetTool(ToolKind.Cursor); break;
@@ -1037,10 +1040,11 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
     public void OpenSettings()
     {
         CloseMenus();
-        var win = new SettingsWindow(_appSettings, _settingsStore, _overlay, HotkeysChanged, this) { Owner = this };
-        win.ShowDialog();
+        CreateSettingsWindow().ShowDialog();
         BuildFooter();
     }
+
+    internal SettingsWindow CreateSettingsWindow() => new(_appSettings, _settingsStore, _overlay, HotkeysChanged, this) { Owner = this };
 
     public void SetPreset(string presetId)
     {

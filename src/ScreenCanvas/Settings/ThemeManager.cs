@@ -88,6 +88,11 @@ public static class ThemeManager
         SetD("Ink.Kbd950", Tw.Slate950, 1, Tw.Slate100, 1);
         SetD("Ink.Selected", Tw.Blue950, 0.4, Tw.Hex("#EFF6FF"), 1);
         SetD("Ink.Code", Tw.Blue400, 1, Tw.Blue600, 1);
+        SetD("Ink.KbdText", Tw.Blue300, 1, Tw.Blue700, 1);
+        SetD("Ink.SuccessText", Tw.Emerald300, 1, Tw.Hex("#047857"), 1);
+        SetD("Ink.DangerBg", Tw.Red950, 0.8, Tw.Hex("#FEF2F2"), 1);
+        SetD("Ink.DangerBorder", Tw.Red800, 1, Tw.Hex("#FECACA"), 1);
+        SetD("Ink.DangerText", Tw.Red300, 1, Tw.Hex("#B91C1C"), 1);
         SetD("Ink.ToolbarText", Tw.Slate300, 1, Tw.Slate600, 1);
         SetD("Ink.ToolbarMuted", Tw.Slate400, 1, Tw.Slate500, 1);
         SetD("Ink.GripText", Tw.Slate500, 1, Tw.Slate400, 1);
