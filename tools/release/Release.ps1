@@ -47,7 +47,11 @@ function Publish-GitHubRelease([string]$version, [string]$notes)
     if (-not (Test-Path $installer)) { Fail "Installer not found: $installer" }
     $notesPath = Join-Path ([IO.Path]::GetTempPath()) "inkit-notes-$version.md"
     Set-Content -Path $notesPath -Value $notes -Encoding utf8
-    gh release create $tag $installer --repo $Repo --title "InkIt $version" --notes-file $notesPath --latest
+    # A version-free copy keeps https://github.com/<repo>/releases/latest/download/InkIt_Setup.exe pointing at the newest release.
+    $stable = Join-Path ([IO.Path]::GetTempPath()) 'InkIt_Setup.exe'
+    Copy-Item $installer $stable -Force
+    if (gh release view $tag --repo $Repo 2>$null) { gh release upload $tag $installer $stable --repo $Repo --clobber }
+    else { gh release create $tag $installer $stable --repo $Repo --title "InkIt $version" --notes-file $notesPath --latest }
     if ($LASTEXITCODE -ne 0) { Fail "GitHub release upload failed. Fix the problem, then run: tools/release/Release.ps1 -RetryUpload" }
 }
 

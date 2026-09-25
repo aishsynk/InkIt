@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/aishsynk/InkIt/releases/latest"><b>⬇ Download the latest version</b></a>
+  <a href="https://github.com/aishsynk/InkIt/releases/latest/download/InkIt_Setup.exe"><b>⬇ Download InkIt for Windows</b></a>
   &nbsp;·&nbsp;
   <a href="https://github.com/aishsynk/InkIt/issues/new?template=review.yml">💬 Leave a review</a>
   &nbsp;·&nbsp;
@@ -73,7 +73,7 @@ While the toolbar is active: **P** pen, **H** highlighter, **E** eraser, **S** s
 
 ## Install
 
-1. Open the [latest release](https://github.com/aishsynk/InkIt/releases/latest) and download **`InkIt_Setup_v0.0.0.N.exe`**.
+1. **[Download InkIt_Setup.exe](https://github.com/aishsynk/InkIt/releases/latest/download/InkIt_Setup.exe)** (always the newest version). Older versions are on the [releases page](https://github.com/aishsynk/InkIt/releases).
 2. Run it. No administrator rights are needed; InkIt installs for your user account and adds a Start menu entry (and, if you like, a desktop icon).
 3. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. This appears because the installer is not code-signed yet.
 
