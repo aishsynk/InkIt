@@ -145,3 +145,10 @@
 - Logo: the user's "inkIT" artwork (red dot on the i) is the toolbar drag handle (white or dark ink per theme; the "i" mark when upright). The app, tray and installer icon is the logo's "i" with its red dot on an off-white tile, which stays legible at 16 px.
 - Icons: refined Lucide icons (MousePointer2, PenLine, CircleDot for laser, Flashlight, Presentation for whiteboard, SquareDashedMousePointer, LayoutGrid, WandSparkles) at 18 px with a 1.75 stroke. Flaticon was considered and rejected: its free licence requires per-icon attribution, the files are separate licensed downloads, and the link requires a sign-in. Lucide is ISC-licensed and already bundled.
 - Rationale: the user asked for pen to come right after the pointer, for segregated tools, for their logo, and for top-quality icons suited to both laymen and experts.
+
+## 2026-09-26 — Public GitHub releases with auto-increment versions
+
+- Decision: InkIt is published at https://github.com/aishsynk/InkIt (public, full source) with installers as GitHub Releases. Versions are 0.0.0.N: `version.txt` holds the last released number, and `tools/release/Release.ps1` releases exactly N+1. The number is saved only after build, installer, push and release all succeed, so no number is skipped. The first release is 0.0.0.1. Releases are made from `main`.
+- Rationale: the user wants to share InkIt for reviews and asked for SQL-identity-style numbering starting from 0.0.0.0 and never skipping.
+- Feedback: GitHub issue forms (`review.yml`, `bug.yml`) plus a review web page. The installer is unsigned, so SmartScreen shows a warning; the README explains "More info → Run anyway".
+- Impact: supersedes the 1.0.0 installer name; the installer is now `InkIt_Setup_v<version>.exe`.

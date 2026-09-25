@@ -46,7 +46,7 @@ public sealed class SettingsWindow : ModalHost
         _toolbar = toolbar;
         Title = "InkIt Settings";
 
-        var subtitle = DK.Text("Changes are saved automatically", 12, "Ink.Text400");
+        var subtitle = DK.Text($"Version {AppInfo.Version}  ·  Changes are saved automatically", 12, "Ink.Text400");
         var header = Header("Settings", Tw.Blue400, "InkIt Settings", subtitle);
 
         var navHost = new Border { Width = 224, Padding = new Thickness(12), BorderThickness = new Thickness(0, 0, 1, 0), Child = _nav };

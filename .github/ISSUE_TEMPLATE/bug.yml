@@ -1,0 +1,35 @@
+name: Report a problem
+description: Something did not work as expected.
+title: "Problem: "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: InkIt version
+      description: Shown in Settings and when you hover the tray icon.
+      placeholder: 0.0.0.1
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to repeat it (if you can)
+      placeholder: "1. Clicked Zoom  2. Dragged a box over ...  3. ..."
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version and screen setup
+      placeholder: Windows 11 23H2, two monitors, 125% scaling
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot (optional)
+      description: Paste or drag an image here.

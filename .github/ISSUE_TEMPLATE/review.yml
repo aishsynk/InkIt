@@ -1,0 +1,57 @@
+name: Review / suggestion
+description: Tell us how InkIt worked for you and what would make it better.
+title: "Review: "
+labels: ["review"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for trying InkIt! Short answers are perfect.
+  - type: input
+    id: version
+    attributes:
+      label: InkIt version
+      description: Shown in Settings and when you hover the tray icon (for example 0.0.0.1).
+      placeholder: 0.0.0.1
+    validations:
+      required: true
+  - type: dropdown
+    id: rating
+    attributes:
+      label: Overall, how useful is InkIt for you?
+      options:
+        - "5 - Excellent"
+        - "4 - Good"
+        - "3 - OK"
+        - "2 - Needs work"
+        - "1 - Not useful yet"
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: How do you use it?
+      options:
+        - Training / teaching
+        - Presentations / demos
+        - Meetings and screen sharing
+        - Support / tutorials
+        - Other
+  - type: textarea
+    id: liked
+    attributes:
+      label: What worked well?
+  - type: textarea
+    id: improve
+    attributes:
+      label: What was confusing or should be improved?
+    validations:
+      required: true
+  - type: textarea
+    id: missing
+    attributes:
+      label: Anything you missed?
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version and screen setup (optional)
+      placeholder: Windows 11, laptop + external monitor at 125%

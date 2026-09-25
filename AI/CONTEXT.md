@@ -32,6 +32,7 @@
 - Runtime and geometry evidence is recorded in `QA_RESULTS.md` and `walkthrough.md`.
 - Release build command: `dotnet build ScreenCanvas.slnx -c Release --no-restore` (0 warnings, 0 errors).
 - Self-contained publish command: `dotnet publish src/ScreenCanvas/ScreenCanvas.csproj -c Release -r win-x64 --self-contained true -o artifacts/publish/win-x64`.
+- Release: ``pwsh tools/release/Release.ps1`` (from a clean ``main``) publishes the next 0.0.0.N version from ``version.txt`` to https://github.com/aishsynk/InkIt/releases. ``-RetryUpload`` redoes a failed GitHub step. The exe and installer carry the version (``-p:Version``, ``/DMyAppVersion``); ``AppInfo.Version`` shows it in Settings and the tray.
 - Installer compile command: `& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" packaging\installer.iss` (outputs `artifacts/installer/InkIt_Setup_v1.0.0.exe`).
 - Publish mode: **self-contained win-x64** (no publish profile; the mode is set by the command above). `packaging/installer.iss` packages `artifacts/publish/win-x64\*`. The output includes `coreclr.dll`/`hostfxr.dll` (245 root files plus 13 framework language folders, 466 files in total). Delete the folder before republishing so no stale files remain.
 - Performance validation (2026-09-24, published exe, clean startup, 20 s settle, 10 s sample): 216.1 MB working set, 140.9 MB private, 0.00% idle CPU. After a drawing session the same process measured 315.6 MB / 227.1 MB, still at 0.00% CPU (overlay and palette windows are created lazily).

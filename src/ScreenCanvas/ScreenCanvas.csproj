@@ -11,7 +11,15 @@
     <Product>InkIt</Product>
     <Title>InkIt</Title>
     <Description>InkIt — Professional Screen Annotation &amp; Presentation Tool</Description>
-    <Version>1.0.0</Version>
+    <!-- Stamped by tools/release/Release.ps1 from version.txt (0.0.0.N, +1 per release). -->
+    <Version>0.0.0.0</Version>
+    <FileVersion>$(Version)</FileVersion>
+    <AssemblyVersion>$(Version)</AssemblyVersion>
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Company>InkIt</Company>
+    <Authors>Aishwar Nigam</Authors>
+    <Copyright>Copyright (c) 2026 Aishwar Nigam</Copyright>
     <ApplicationIcon>Assets\InkIt.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>

@@ -1,50 +1,125 @@
-# ScreenCanvas
+<p align="center">
+  <img src="docs/images/logo.png" alt="InkIt" width="260">
+</p>
 
-ScreenCanvas is an independent Windows presentation overlay built with C# and WPF on .NET 8. It aims to combine fast screen annotation with zoom, capture, recording, and presenter utilities while remaining lightweight and fully native.
+<p align="center">
+  <b>Draw, highlight, zoom and screenshot on top of anything on your Windows screen.</b><br>
+  Made for trainers, teachers and presenters, and simple enough for anyone.
+</p>
 
-## Current milestone
+<p align="center">
+  <a href="https://github.com/aishsynk/InkIt/releases/latest"><b>⬇ Download the latest version</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/aishsynk/InkIt/issues/new?template=review.yml">💬 Leave a review</a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/aishsynk/InkIt/issues/new?template=bug.yml">🐞 Report a problem</a>
+</p>
 
-The repository currently contains the runnable Phase 1/2 foundation:
+<p align="center">
+  <img src="docs/images/toolbar.png" alt="The InkIt toolbar" width="820">
+</p>
 
-- 48 px icon-first vertical toolbar with collapse and contextual flyouts
-- notification-area menu
-- one transparent overlay per monitor
-- safe click-through cursor mode
-- mouse, touch, and pressure-aware Windows Ink input
-- pen, highlighter, stroke eraser, color selection
-- live-preview vector lines, arrows, double arrows, rectangles, rounded rectangles, ellipses, triangles and diamonds
-- advanced live-preview corporate diagram, connector, callout and trainer symbols
-- formatted inline text, number/letter markers, per-object fade presets and laser pointer foundation
-- black/white/custom presentation boards
-- full-desktop and monitor capture to clipboard or PNG/JPEG
-- undo, redo, and clear
-- blackboard surface and cursor spotlight foundations
-- global hotkeys, including an emergency release shortcut
+---
 
-This is not yet feature-complete. See [FEATURE_MATRIX.md](FEATURE_MATRIX.md) for validated status and [QA_RESULTS.md](QA_RESULTS.md) for interaction-pass results.
+## What is InkIt?
 
-The compact **More** flyout exposes native live zoom/reset, break timer, DemoType, freeze, curtain, and searchable settings. Capture now includes an interactive region selector.
-OCR uses the offline Windows OCR engine and requires an installed Windows OCR language pack. Static Zoom supports wheel zoom, drag pan, number-key presets, and Esc/right-click exit.
+InkIt puts a small floating toolbar on your screen. Pick the pen and draw straight over PowerPoint, a browser, code, a video call - anything. Press **Esc** and your mouse works normally again. Nothing you draw changes the apps underneath.
 
-## Run
+It is built for people who **explain things on screen**: corporate trainers, teachers, presenters, support staff and anyone sharing their screen in Teams, Zoom or Meet.
 
-```powershell
-dotnet run --project src/ScreenCanvas/ScreenCanvas.csproj
-```
+## Highlights
 
-Hotkeys:
+| | |
+|---|---|
+| ✏️ **Pen and highlighter** | Draw freehand with the mouse, a pen or a touch screen. 15 pen styles, see-through highlighter, pressure support. |
+| 🔍 **Zoom into an area** | Drag a box around any part of the screen. It fills the screen and **stays put**, so you can point at it and draw on it. Esc takes you back. |
+| 📸 **Screenshot of an area** | Drag a box. The picture is **copied at once** - paste it into Teams, PowerPoint or email with Ctrl+V - or save it as PNG/JPG. |
+| 🔴 **Laser pointer and spotlight** | A glowing laser dot with a fading trail, or dim the whole screen except where your mouse is. |
+| ➡️ **Shapes, text and step numbers** | Arrows, boxes, circles, text notes and numbered 1-2-3 badges for walkthroughs. |
+| 🧑‍🏫 **Whiteboard** | Cover the screen with a whiteboard, blackboard or grid paper whenever you need a clean space. |
+| ↩️ **Undo, select and clear** | Move, recolour or delete what you drew; Undo even brings back a Clear. |
+| 🔎 **Search every feature** | Press **Ctrl+K** and type what you want - "zoom", "screenshot", "whiteboard". |
 
-- `Ctrl+Shift+2` — toggle annotation
-- `Ctrl+Shift+Z` — undo
-- `Ctrl+Shift+Delete` — clear
-- `Alt+Shift+X` — emergency stop: restore click-through and hide the toolbar
+## Toolbar at a glance
 
-## Build
+Buttons are grouped left to right in the order you reach for them:
 
-```powershell
-dotnet build ScreenCanvas.slnx -c Release
-```
+| Group | Buttons |
+|---|---|
+| **Draw** | Cursor · **Pen** · Highlighter · Eraser · Colour |
+| **Add** | Shapes · Text · Step numbers |
+| **Present** | Laser · Spotlight · Zoom · Screenshot · Whiteboard |
+| **Edit** | Select · Undo · Clear |
+| **Find** | Search · All features |
 
-## Safety
+Expert switches (snap to grid, stacked assists, toolbar direction, customise) sit at the right end. Hover over any button to see what it does. The toolbar can be turned upright, moved by dragging the logo, and customised with presets (Trainer, Presenter, Diagrams, Everything).
 
-The overlay starts in click-through mode. The emergency shortcut remains global while the toolbar is hidden. Exiting from the tray closes every overlay and unregisters all hotkeys.
+## Keyboard shortcuts
+
+These work in any app:
+
+| Shortcut | Action |
+|---|---|
+| **Esc** | Stop drawing / close whatever is open |
+| **Ctrl+Shift+5** | Zoom into an area |
+| **Ctrl+Shift+4** | Screenshot of an area (copied to the clipboard) |
+| **Ctrl+Shift+2** | Start / stop drawing |
+| **Ctrl+Shift+Z** | Undo |
+| **Ctrl+Shift+Delete** | Clear all drawings |
+| **Ctrl+Shift+G** | Snap to grid on / off |
+| **Alt+Shift+X** | Panic key - instantly closes every tool and overlay |
+
+While the toolbar is active: **P** pen, **H** highlighter, **E** eraser, **S** shapes, **T** text, **N** step numbers, **V** select, **Ctrl+K** search, **F10** all features.
+
+## Install
+
+1. Open the [latest release](https://github.com/aishsynk/InkIt/releases/latest) and download **`InkIt_Setup_v0.0.0.N.exe`**.
+2. Run it. No administrator rights are needed; InkIt installs for your user account and adds a Start menu entry (and, if you like, a desktop icon).
+3. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. This appears because the installer is not code-signed yet.
+
+**Requirements:** Windows 10 version 2004 (build 19041) or later, or Windows 11, 64-bit. Everything InkIt needs is included; it works offline and uses no internet connection.
+
+To uninstall, use **Settings → Apps → InkIt → Uninstall**.
+
+## Safe by design
+
+- InkIt starts in **Cursor** mode: your clicks go to your apps until you pick a drawing tool.
+- **Esc** always stops drawing, and **Alt+Shift+X** (panic key) closes every tool and overlay instantly, even if the toolbar is hidden.
+- Nothing is uploaded: screenshots stay on your PC (clipboard or the file you choose), and settings are stored in `%LOCALAPPDATA%\InkIt`.
+- "Copy text from screen" uses the offline Windows OCR engine and needs a Windows OCR language pack for your language.
+
+## Screens
+
+<p>
+  <img src="docs/images/zoom-panel.png" alt="Zoom panel" width="260">
+  <img src="docs/images/pen-panel.png" alt="Pen panel" width="260">
+  <img src="docs/images/board-panel.png" alt="Whiteboard panel" width="260">
+</p>
+
+## Versions
+
+Releases are numbered **0.0.0.1, 0.0.0.2, 0.0.0.3 …** - each release is exactly one higher than the last, with no gaps. The version you are running is shown in **Settings** and in the tray icon tooltip; please mention it in reviews and bug reports. See [CHANGELOG.md](CHANGELOG.md) and the [releases page](https://github.com/aishsynk/InkIt/releases).
+
+## Feedback wanted
+
+InkIt is in early testing. The most useful feedback is:
+
+- What you tried to do, and whether it was easy to find and use.
+- Anything confusing, slow, or that got in the way of your presentation or call.
+- The feature you missed most.
+
+👉 [Leave a review](https://github.com/aishsynk/InkIt/issues/new?template=review.yml) · [Report a problem](https://github.com/aishsynk/InkIt/issues/new?template=bug.yml)
+
+## For developers
+
+- **Stack:** C# / WPF on .NET 8 (`net8.0-windows10.0.19041.0`), per-monitor DPI aware, no NuGet packages.
+- **Build:** `dotnet build ScreenCanvas.slnx -c Release`
+- **Run:** `src/ScreenCanvas/bin/Release/net8.0-windows10.0.19041.0/InkIt.exe`
+- **Release:** `pwsh tools/release/Release.ps1` - publishes a self-contained build stamped with the next version from `version.txt`, builds the Inno Setup installer and creates the GitHub release. See the script header for the numbering rules.
+- **Layout:** `src/ScreenCanvas` (app), `packaging/installer.iss` (installer), `tools/` (icon generator, release script), `AI/` (project notes and decisions). Test evidence: [QA_RESULTS.md](QA_RESULTS.md), [FEATURE_MATRIX.md](FEATURE_MATRIX.md).
+
+Icons are from [Lucide](https://lucide.dev) (ISC licence, see `src/ScreenCanvas/UI/Icons/LUCIDE-LICENSE.txt`).
+
+---
+
+<p align="center"><img src="docs/images/icon.png" width="40" alt=""><br>© 2026 Aishwar Nigam</p>

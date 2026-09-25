@@ -18,7 +18,7 @@ public sealed class TrayService : IDisposable
 
         _icon = new Forms.NotifyIcon
         {
-            Text = "InkIt - double-click to show the toolbar",
+            Text = $"InkIt {AppInfo.Version} - double-click to show the toolbar",
             Icon = LoadAppIcon(),
             ContextMenuStrip = menu,
             Visible = true
