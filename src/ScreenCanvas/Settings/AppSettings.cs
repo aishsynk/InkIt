@@ -117,6 +117,8 @@ public sealed class PresentationSettings
     public int BreakTimerMinutes { get; set; } = 5;
     public double ZoomFactor { get; set; } = 2.0;
     public bool ZoomFollowsMouse { get; set; }
+    /// <summary>During a PowerPoint slide show, each slide keeps its own drawings.</summary>
+    public bool FollowSlides { get; set; } = true;
 }
 
 public sealed class CanvasSettings

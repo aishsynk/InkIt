@@ -115,6 +115,8 @@ public sealed class CommandRegistry
             ["laser", "pointer", "red dot", "tail", "presenter"], () => overlay.SetTool(ToolKind.Laser), () => s.Tool == ToolKind.Laser);
         Add("present.spotlight", "Spotlight", CapabilityCategory.Present, "Darken the whole screen except a circle around the mouse", "SunMedium", "Ctrl+Shift+S",
             ["spotlight", "dim", "aperture", "focus light"], () => overlay.SetTool(ToolKind.Spotlight), () => s.Tool == ToolKind.Spotlight);
+        Add("present.follow_slides", "Drawings Follow PowerPoint Slides", CapabilityCategory.Present, "During a slide show each slide keeps its own drawings; they come back when you return to it", "Presentation", null,
+            ["powerpoint", "slides", "slide show", "per slide", "keep drawings"], () => toolbar.FollowSlides = !toolbar.FollowSlides, () => toolbar.FollowSlides);
         Add("present.focus_box", "Focus Box", CapabilityCategory.Present, "Drag a box: everything else is dimmed while your apps keep working", "Focus", null,
             ["focus", "dim", "highlight area", "box", "attention"], toolbar.FocusOnArea, () => overlay.IsFocusBoxActive);
         Add("present.break_timer", "Break Timer", CapabilityCategory.Present, "Small countdown clock for breaks", "Timer", "Ctrl+Shift+B",

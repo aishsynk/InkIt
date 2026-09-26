@@ -14,6 +14,7 @@ public partial class App : System.Windows.Application
     private TrayService? _tray;
     private ToolbarWindow? _toolbar;
     private bool _temporaryModeActive;
+    private Support.SingleInstance? _single;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -35,6 +36,21 @@ public partial class App : System.Windows.Application
         var settingsPath = settingsIndex >= 0 && settingsIndex + 1 < args.Length ? args[settingsIndex + 1]
             : qaCapture ? System.IO.Path.Combine(System.IO.Path.GetTempPath(), "InkIt-QA", "settings.json") : null;
         var globalHotkeys = !qaCapture && !args.Contains("--no-global-hotkeys");
+        // One InkIt per session: a second launch hands its request (inkit:// link, .inkit file, --command) to this one.
+        var developerRun = qaCapture || settingsIndex >= 0 || args.Contains("--no-global-hotkeys");
+        if (!developerRun)
+        {
+            _single = new Support.SingleInstance();
+            if (!_single.IsFirst)
+            {
+                Support.SingleInstance.Forward(args);
+                _single.Dispose();
+                _single = null;
+                Shutdown();
+                return;
+            }
+            Support.ShellRegistration.EnsureRegistered();
+        }
         var settingsStore = new JsonSettingsStore(settingsPath);
         var startupSettings = settingsStore.LoadAsync().GetAwaiter().GetResult();
         startupSettings.Hotkeys.EnsureDefaults();
@@ -53,6 +69,7 @@ public partial class App : System.Windows.Application
         _hotkeys.ToggleSnap += (_, _) => _toolbar.Registry.Find("canvas.snap_toggle")?.Execute();
         _hotkeys.CaptureRegion += (_, _) => _toolbar.CaptureRegionWithPreview();
         _hotkeys.ToggleZoom += (_, _) => _toolbar.ToggleZoom();
+        _hotkeys.CommandInvoked += command => _toolbar.RunNamedCommand(command);
         // Esc always ends the active tool (and closes any open palette) — see DECISIONS "Global Esc invariant".
         _hotkeys.EscapePressed += (_, _) => EndCurrentTool();
         _toolbar.HotkeysChanged = config => { if (globalHotkeys) _hotkeys.Reconfigure(config); };
@@ -83,6 +100,13 @@ public partial class App : System.Windows.Application
         if (_hotkeys.Unavailable.Count > 0)
             Toast.Show("Another app already uses this shortcut: " + string.Join(", ", _hotkeys.Unavailable));
 
+
+        if (_single is not null)
+        {
+            _single.ArgumentsReceived += forwarded => Dispatcher.BeginInvoke(() => _toolbar.HandleExternalArguments(forwarded));
+            _single.Listen();
+        }
+        if (!developerRun && args.Length > 0) Dispatcher.BeginInvoke(() => _toolbar.HandleExternalArguments(args), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
         if (qaCapture) RunQaCapture(_toolbar);
     }
@@ -176,6 +200,7 @@ public partial class App : System.Windows.Application
     {
         _hotkeys?.Dispose();
         _tray?.Dispose();
+        _single?.Dispose();
         _overlays?.Dispose();
         base.OnExit(e);
     }

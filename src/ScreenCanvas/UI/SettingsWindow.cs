@@ -240,7 +240,9 @@ public sealed class SettingsWindow : ModalHost
         foreach (var binding in _settings.Hotkeys.Bindings)
         {
             table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            Cell(DK.Text(binding.Action, 12, "Ink.Text", FontWeights.Medium), row, 0, false);
+            var isCustom = binding.Action.StartsWith(HotkeyManager.CommandPrefix, StringComparison.Ordinal);
+            var actionName = isCustom ? _toolbar.Registry.Find(binding.Action[HotkeyManager.CommandPrefix.Length..])?.Name ?? binding.Action : binding.Action;
+            Cell(DK.Text(actionName, 12, "Ink.Text", FontWeights.Medium), row, 0, false);
             var capturing = _capturingAction == binding.Action;
             var keysText = capturing ? "Press keys…" : binding.DisplayText;
             var kbd = DK.Kbd(keysText, capturing ? Tw.B(Tw.Amber300) : "Ink.KbdText", "Ink.Kbd950", capturing ? Tw.B(Tw.Amber500) : "Ink.BorderStrong", 12, new Thickness(8, 2, 8, 2));
@@ -257,11 +259,33 @@ public sealed class SettingsWindow : ModalHost
             Cell(keysCell, row, 1, false);
             Cell(binding.Protected
                 ? DK.H(4, new LucideIcon("Shield", 12) { Foreground = Tw.B(Tw.Red400) }, DK.Text("Always on (panic key)", 12, Tw.B(Tw.Red400), FontWeights.SemiBold))
-                : DK.Text("Rebindable", 12, "Ink.Text400"), row, 2, false);
+                : isCustom ? RemoveButton(binding.Action) : DK.Text("Rebindable", 12, "Ink.Text400"), row, 2, false);
             row++;
         }
         var frame = DK.Surface(table, Tw.B(Colors.Transparent), "Ink.Divider", 12, new Thickness(0));
         frame.ClipToBounds = true;
+
+        // Any feature can get its own shortcut.
+        var features = new System.Windows.Controls.ComboBox
+        {
+            MinWidth = 260,
+            ItemsSource = _toolbar.Registry.Commands.OrderBy(c => c.Name).Select(c => new System.Windows.Controls.ComboBoxItem { Content = c.Name, Tag = c.Id }).ToList(),
+            ToolTip = "Pick a feature, then press the keys you want for it"
+        };
+        var add = DK.Button(DK.IconLabel("Plus", 12, "Add shortcut", 12, spacing: 4), Tw.B(Tw.Blue600), Tw.B(Colors.White), Tw.B(Tw.Blue500), Tw.B(Colors.White), 8, new Thickness(10, 5, 10, 5));
+        add.Click += (_, _) =>
+        {
+            if (features.SelectedItem is not System.Windows.Controls.ComboBoxItem { Tag: string id }) { _hotkeyStatus = "Pick a feature first."; Render(); return; }
+            var action = HotkeyManager.CommandPrefix + id;
+            if (_settings.Hotkeys.Bindings.All(b => b.Action != action)) _settings.Hotkeys.Bindings.Add(new HotkeyBinding(action, ModifierKeys.None, Key.None));
+            _capturingAction = action;
+            _hotkeyStatus = "Now press the keys (for example Ctrl+Shift+W). Esc cancels.";
+            Render();
+            Focus();
+        };
+        var addRow = DK.H(8, features, add);
+        var streamDeck = DK.Text("Stream Deck, macros and scripts can also run any feature with a link such as inkit://pen, inkit://zoom, inkit://screenshot, inkit://whiteboard, inkit://next-page or inkit://color/red.", 11, "Ink.Text400").Wrap();
+        var more = Ruled(Section("Shortcut for any feature", null, addRow, streamDeck));
 
         var reset = DK.Button(DK.IconLabel("RotateCcw", 12, "Reset to defaults", 11, spacing: 4), Tw.B(Colors.Transparent), Tw.B(Tw.Blue400), Tw.B(Colors.Transparent), Tw.B(Tw.Blue300), 4);
         reset.HorizontalAlignment = HorizontalAlignment.Left;
@@ -269,7 +293,15 @@ public sealed class SettingsWindow : ModalHost
         var status = DK.Text(_hotkeyStatus, 12, Tw.B(Tw.Amber400)).Wrap();
         var footer = DK.Between(reset, status);
         footer.Margin = new Thickness(0, 12, 0, 0);
-        return DK.V(0, header, frame, footer);
+        return DK.V(0, header, frame, footer, more);
+    }
+
+    private FrameworkElement RemoveButton(string action)
+    {
+        var b = DK.Button(DK.IconLabel("X", 12, "Remove", 12, spacing: 4), Tw.B(Colors.Transparent), "Ink.Text400", Tw.B(Tw.Red950, 0.4), Tw.B(Tw.Red300), 4, new Thickness(6, 2, 6, 2));
+        b.HorizontalAlignment = HorizontalAlignment.Left;
+        b.Click += (_, _) => { _settings.Hotkeys.Bindings.RemoveAll(x => x.Action == action); _hotkeyStatus = string.Empty; CommitHotkeys(); };
+        return b;
     }
 
     private void OnCaptureKey(object sender, KeyEventArgs e)
@@ -277,7 +309,14 @@ public sealed class SettingsWindow : ModalHost
         if (_capturingAction is null) return;
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         e.Handled = true;
-        if (key == Key.Escape) { _capturingAction = null; Render(); return; }
+        if (key == Key.Escape)
+        {
+            // Cancelling a new custom shortcut leaves no empty row behind.
+            _settings.Hotkeys.Bindings.RemoveAll(b => b.Action == _capturingAction && b.IsEmpty && b.Action.StartsWith(HotkeyManager.CommandPrefix, StringComparison.Ordinal));
+            _capturingAction = null;
+            Render();
+            return;
+        }
         if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin) return;
         var original = _settings.Hotkeys.Bindings.First(b => b.Action == _capturingAction);
         var candidate = original with { Key = key, Modifiers = Keyboard.Modifiers };
@@ -358,7 +397,16 @@ public sealed class SettingsWindow : ModalHost
             v => _overlay.UpdateOptions(o => o.CodeFocusBandHeight = v));
         ((Slider)slit.Children[1]).Foreground = Tw.B(Tw.Blue500);
         radius.Margin = slit.Margin = new Thickness(0, 8, 0, 0);
-        return DK.V(0, Section("Spotlight Aperture Configuration", null, radius), Ruled(Section("Code Focus Slit Band", null, slit)));
+        var slidesText = DK.V(0, DK.Text("Keep drawings with each PowerPoint slide", 13, "Ink.Text", FontWeights.Medium),
+            DK.Text("During a slide show, moving to the next slide hides your drawings; going back shows them again.", 11, "Ink.Text400").Wrap());
+        slidesText.Margin = new Thickness(0, 0, 16, 0);
+        var slidesSwitch = DK.Switch(_toolbar.FollowSlides, v => _toolbar.FollowSlides = v, Tw.Blue500);
+        slidesSwitch.VerticalAlignment = VerticalAlignment.Center;
+        var slides = new Grid { ColumnDefinitions = { new ColumnDefinition(), new ColumnDefinition { Width = GridLength.Auto } } };
+        slides.Children.Add(slidesText);
+        Grid.SetColumn(slidesSwitch, 1);
+        slides.Children.Add(slidesSwitch);
+        return DK.V(0, Section("PowerPoint", null, slides), Ruled(Section("Spotlight Size", null, radius)), Ruled(Section("Focus Band", null, slit)));
     }
 
     private UIElement Profiles()

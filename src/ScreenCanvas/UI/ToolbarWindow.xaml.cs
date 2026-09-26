@@ -187,6 +187,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         };
         ContentRendered += (_, _) =>
         {
+            ApplyFollowSlides();
             if (!ShowStartupExtras) return;
             // First run: a short tour. Every run: a quiet daily update check (if allowed) a little after start-up.
             if (!_appSettings.Advanced.TourCompleted)
@@ -1182,6 +1183,113 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         var timer = new System.Windows.Threading.DispatcherTimer { Interval = delay };
         timer.Tick += (_, _) => { timer.Stop(); action(); };
         timer.Start();
+    }
+
+    // ------------------------------------------------------------------ Links, Stream Deck and command line
+
+    /// <summary>Friendly names for inkit:// links and --command (any command id also works, e.g. inkit://screen.zoom_area).</summary>
+    public static readonly IReadOnlyDictionary<string, string> CommandAliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["cursor"] = "tools.cursor", ["pen"] = "annot.pen", ["highlighter"] = "annot.highlighter", ["eraser"] = "annot.eraser",
+        ["text"] = "annot.text", ["numbers"] = "annot.marker", ["select"] = "annot.select", ["shapes"] = "shape.hub",
+        ["arrow"] = "shape.arrow", ["line"] = "shape.line", ["box"] = "shape.rectangle", ["circle"] = "shape.ellipse",
+        ["laser"] = "present.laser", ["spotlight"] = "present.spotlight", ["focus"] = "present.focus_box",
+        ["zoom"] = "screen.zoom_area", ["zoom-follow"] = "screen.zoom_follow", ["screenshot"] = "screen.capture_region",
+        ["freeze"] = "screen.freeze_frame", ["whiteboard"] = "board.whiteboard", ["blackboard"] = "board.blackboard",
+        ["grid"] = "board.grid", ["screen"] = "board.transparent", ["next-page"] = "board.next_page",
+        ["previous-page"] = "board.previous_page", ["new-page"] = "board.new_page", ["export-pdf"] = "board.export_pdf",
+        ["save"] = "file.save", ["open"] = "file.open", ["undo"] = "annot.undo", ["redo"] = "annot.redo",
+        ["clear"] = "annot.clear", ["timer"] = "present.break_timer", ["keys"] = "present.key_visualizer",
+        ["search"] = "tools.command_palette", ["features"] = "tools.capability_centre", ["settings"] = "tools.settings",
+        ["tour"] = "tools.tour", ["record"] = "screen.record", ["mirror"] = "screen.mirror",
+    };
+
+    /// <summary>
+    /// Arguments from a second launch or from start-up: --show, a .inkit file, inkit://&lt;command&gt;, --command &lt;command&gt;,
+    /// inkit://color/&lt;1-6 or name&gt;.
+    /// </summary>
+    public void HandleExternalArguments(IReadOnlyList<string> args)
+    {
+        for (var i = 0; i < args.Count; i++)
+        {
+            var arg = args[i].Trim();
+            if (arg.Length == 0) continue;
+            if (arg is "--show" or "--startup") { if (arg == "--show") ShowFromTray(); continue; }
+            if (arg == "--command" && i + 1 < args.Count) { RunNamedCommand(args[++i]); continue; }
+            if (arg.StartsWith("inkit:", StringComparison.OrdinalIgnoreCase))
+            {
+                var path = arg["inkit:".Length..].TrimStart('/').TrimEnd('/');
+                RunNamedCommand(Uri.UnescapeDataString(path));
+                continue;
+            }
+            if (arg.EndsWith(Overlay.InkFile.Extension, StringComparison.OrdinalIgnoreCase) && System.IO.File.Exists(arg))
+            {
+                ShowFromTray();
+                OpenDrawings(arg);
+            }
+        }
+    }
+
+    private void ShowFromTray()
+    {
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Topmost = false;
+        Topmost = true;
+    }
+
+    public void RunNamedCommand(string name)
+    {
+        var parts = name.Split('/', 2);
+        if (parts[0].Equals("color", StringComparison.OrdinalIgnoreCase) && parts.Length == 2)
+        {
+            var match = int.TryParse(parts[1], out var n) && n is >= 1 and <= 6
+                ? InspectorWindow.TeachingColors[n - 1]
+                : InspectorWindow.TeachingColors.FirstOrDefault(c => c.Name.Equals(parts[1], StringComparison.OrdinalIgnoreCase));
+            if (match.Hex is null) { Toast.Show($"InkIt does not know the colour \"{parts[1]}\""); return; }
+            _overlay.SetColor(Tw.Hex(match.Hex));
+            RefreshItemStates();
+            return;
+        }
+        var id = CommandAliases.TryGetValue(parts[0], out var alias) ? alias : parts[0];
+        if (id == "tools.cursor") { EndCurrentTool(); return; }
+        if (_registry.Find(id) is { } command) command.Execute();
+        else Toast.Show($"InkIt does not know the command \"{name}\"");
+    }
+
+    // ------------------------------------------------------------------ PowerPoint slides
+
+    private SlideShowWatcher? _slides;
+
+    /// <summary>Starts or stops keeping drawings with each PowerPoint slide (Settings > Spotlight & Focus).</summary>
+    public void ApplyFollowSlides()
+    {
+        if (_appSettings.Presentation.FollowSlides)
+        {
+            if (_slides is null)
+            {
+                _slides = new SlideShowWatcher();
+                _slides.SlideChanged += (key, point) => _overlay.ShowSlide(key, point);
+                _slides.SlideShowEnded += _overlay.EndSlides;
+            }
+            _slides.Start();
+        }
+        else
+        {
+            _slides?.Stop();
+        }
+    }
+
+    public bool FollowSlides
+    {
+        get => _appSettings.Presentation.FollowSlides;
+        set
+        {
+            _appSettings.Presentation.FollowSlides = value;
+            SaveSettings();
+            ApplyFollowSlides();
+            Toast.Show(value ? "Drawings now stay with each PowerPoint slide" : "Drawings no longer follow PowerPoint slides");
+        }
     }
 
     public void SendFeedback() => Support.Links.Open(Support.Links.Review);

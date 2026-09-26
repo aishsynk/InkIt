@@ -52,6 +52,19 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "..\artifacts\publish\win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Registry]
+; inkit:// links (Stream Deck, shortcuts, scripts) and double-click to open saved .inkit drawings.
+Root: HKCU; Subkey: "Software\Classes\inkit"; ValueType: string; ValueName: ""; ValueData: "URL:InkIt command"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\inkit"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\inkit\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"",0"
+Root: HKCU; Subkey: "Software\Classes\inkit\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+Root: HKCU; Subkey: "Software\Classes\.inkit"; ValueType: string; ValueName: ""; ValueData: "InkIt.Drawings"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\InkIt.Drawings"; ValueType: string; ValueName: ""; ValueData: "InkIt drawings"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\InkIt.Drawings\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"",0"
+Root: HKCU; Subkey: "Software\Classes\InkIt.Drawings\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""
+; "Start with Windows" is chosen in InkIt's Settings; remove it on uninstall.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "InkIt"; Flags: uninsdeletevalue dontcreatekey
+
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Comment: "Draw, highlight, zoom and screenshot on your screen"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"

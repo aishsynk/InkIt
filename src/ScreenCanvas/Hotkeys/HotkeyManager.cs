@@ -29,6 +29,10 @@ public sealed class HotkeyManager : IDisposable
     public event EventHandler? ToggleSnap;
     public event EventHandler? CaptureRegion;
     public event EventHandler? ToggleZoom;
+    /// <summary>A shortcut the user gave to any feature (bindings named "cmd:&lt;command id&gt;").</summary>
+    public event Action<string>? CommandInvoked;
+    public const string CommandPrefix = "cmd:";
+    private readonly Dictionary<int, string> _commandIds = [];
     /// <summary>Bindings that could not be registered because another app owns the shortcut.</summary>
     public List<string> Unavailable { get; } = [];
     private bool _escapeRegistered;
@@ -46,8 +50,9 @@ public sealed class HotkeyManager : IDisposable
     public void Reconfigure(HotkeyConfiguration config)
     {
         if (_handle == nint.Zero) return;
-        foreach (var id in AllIds)
+        foreach (var id in AllIds.Concat(_commandIds.Keys))
             NativeMethods.UnregisterHotKey(_handle, id);
+        _commandIds.Clear();
         _escapeRegistered = false;
         RegisterFromConfiguration(config);
     }
@@ -58,6 +63,13 @@ public sealed class HotkeyManager : IDisposable
         foreach (var binding in config.Bindings)
         {
             if (binding.IsEmpty) continue;
+            if (binding.Action.StartsWith(CommandPrefix, StringComparison.Ordinal))
+            {
+                var commandId = 0x6000 + _commandIds.Count;
+                if (Register(commandId, ToNativeModifiers(binding.Modifiers), binding.Key)) _commandIds[commandId] = binding.Action[CommandPrefix.Length..];
+                else Unavailable.Add($"{binding.Action[CommandPrefix.Length..]} ({binding.DisplayText})");
+                continue;
+            }
             var id = GetActionId(binding.Action);
             if (id is null) continue;
             if (!Register(id.Value, ToNativeModifiers(binding.Modifiers), binding.Key))
@@ -121,6 +133,9 @@ public sealed class HotkeyManager : IDisposable
             case SnapId: ToggleSnap?.Invoke(this, EventArgs.Empty); break;
             case CaptureId: CaptureRegion?.Invoke(this, EventArgs.Empty); break;
             case ZoomId: ToggleZoom?.Invoke(this, EventArgs.Empty); break;
+            default:
+                if (_commandIds.TryGetValue(wParam.ToInt32(), out var command)) CommandInvoked?.Invoke(command);
+                break;
         }
         return nint.Zero;
     }
@@ -128,7 +143,7 @@ public sealed class HotkeyManager : IDisposable
     public void Dispose()
     {
         if (_handle == nint.Zero) return;
-        foreach (var id in AllIds) NativeMethods.UnregisterHotKey(_handle, id);
+        foreach (var id in AllIds.Concat(_commandIds.Keys)) NativeMethods.UnregisterHotKey(_handle, id);
         _source?.RemoveHook(WindowProc);
     }
 }
