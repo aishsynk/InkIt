@@ -23,6 +23,7 @@ public partial class OverlayWindow
 
         var path = NewShapePath(shape.Kind);
         path.Data = shape.Geometry;
+        SnapConnector(path);
         InkSurface.Strokes.Remove(stroke);
         ShapeSurface.Children.Add(path);
         RecordConversion(stroke,
@@ -77,6 +78,65 @@ public partial class OverlayWindow
             undo: () => { Apply(oldKind, oldData, oldFill); RestoreAnnotation(stroke); },
             redo: () => { RemoveAnnotation(stroke); Apply(newKind, newData, target.Stroke); });
         return true;
+    }
+
+    // ------------------------------------------------------------------ Connectors
+
+    private const double ConnectorReach = 26;
+
+    /// <summary>
+    /// Connectors: a line or arrow whose end lands near a box, circle, diamond or triangle is snapped onto that
+    /// shape's edge, so flowcharts come out tidy.
+    /// </summary>
+    private void SnapConnector(Path path)
+    {
+        if (path.Tag is not ShapeKind kind || kind is not (ShapeKind.Line or ShapeKind.Arrow or ShapeKind.DoubleArrow)) return;
+        if (Shaft(path) is not { } shaft) return;
+        var offset = GetOffset(path);
+        var start = SnapToOutline(shaft.Start + offset, path) - offset;
+        var end = SnapToOutline(shaft.End + offset, path) - offset;
+        if (start == shaft.Start && end == shaft.End) return;
+        path.Data = kind == ShapeKind.Line ? new LineGeometry(start, end) : ShapeGeometry.Build(kind, start, end, path.StrokeThickness);
+    }
+
+    private Point SnapToOutline(Point point, Path self)
+    {
+        var best = point;
+        var bestDistance = ConnectorReach;
+        foreach (var shape in ShapeSurface.Children.OfType<Path>())
+        {
+            if (ReferenceEquals(shape, self) || shape.Tag is not ShapeKind kind) continue;
+            if (kind is not (ShapeKind.Rectangle or ShapeKind.RoundedRectangle or ShapeKind.Ellipse or ShapeKind.Diamond or ShapeKind.Triangle)) continue;
+            var offset = GetOffset(shape);
+            var bounds = shape.Data.Bounds;
+            bounds.Offset(offset);
+            bounds.Inflate(ConnectorReach, ConnectorReach);
+            if (!bounds.Contains(point)) continue;
+            var outline = shape.Data.GetFlattenedPathGeometry(0.5, ToleranceType.Absolute);
+            foreach (var figure in outline.Figures)
+            {
+                var previous = figure.StartPoint + offset;
+                foreach (var segment in figure.Segments.OfType<PolyLineSegment>())
+                    foreach (var raw in segment.Points.Append(figure.StartPoint))
+                    {
+                        var current = raw + offset;
+                        var candidate = NearestOnSegment(point, previous, current);
+                        var distance = (candidate - point).Length;
+                        if (distance < bestDistance) { bestDistance = distance; best = candidate; }
+                        previous = current;
+                    }
+            }
+        }
+        return best;
+    }
+
+    private static Point NearestOnSegment(Point p, Point a, Point b)
+    {
+        var ab = b - a;
+        var lengthSquared = ab.LengthSquared;
+        if (lengthSquared < 0.0001) return a;
+        var t = Math.Clamp(Vector.Multiply(p - a, ab) / lengthSquared, 0, 1);
+        return a + ab * t;
     }
 
     /// <summary>History: the freehand stroke, then the conversion, so Undo peels them off one at a time.</summary>

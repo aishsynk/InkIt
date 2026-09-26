@@ -51,6 +51,11 @@ public partial class OverlayWindow
     private bool _penDown;
     private bool _eraserTip;
     private readonly Dictionary<int, Point> _touchContacts = [];
+    // Multi-finger taps: two fingers = Undo, three = Redo (quick, without moving).
+    private readonly Dictionary<int, Point> _tapStart = [];
+    private DateTime _tapBegan;
+    private int _tapMaxContacts;
+    private bool _tapSpoiled;
     private bool _pinchActive;
     private double _pinchStartDistance;
     private double _pinchStartZoom;
@@ -350,7 +355,11 @@ public partial class OverlayWindow
         InputRoot.TouchDown += (_, e) =>
         {
             if (_penDown) return;
-            _touchContacts[e.TouchDevice.Id] = e.GetTouchPoint(InputRoot).Position;
+            var down = e.GetTouchPoint(InputRoot).Position;
+            _touchContacts[e.TouchDevice.Id] = down;
+            if (_tapStart.Count == 0) { _tapBegan = DateTime.UtcNow; _tapMaxContacts = 0; _tapSpoiled = false; }
+            _tapStart[e.TouchDevice.Id] = down;
+            _tapMaxContacts = Math.Max(_tapMaxContacts, _tapStart.Count);
             _pointerKind = PointerKind.Touch;
             if (_touchContacts.Count == 2)
             {
@@ -365,11 +374,16 @@ public partial class OverlayWindow
         InputRoot.TouchMove += (_, e) =>
         {
             if (!_touchContacts.ContainsKey(e.TouchDevice.Id)) return;
-            _touchContacts[e.TouchDevice.Id] = e.GetTouchPoint(InputRoot).Position;
+            var moved = e.GetTouchPoint(InputRoot).Position;
+            _touchContacts[e.TouchDevice.Id] = moved;
+            if (_tapStart.TryGetValue(e.TouchDevice.Id, out var start) && (moved - start).Length > 18) _tapSpoiled = true;
             if (_pinchActive && _touchContacts.Count == 2)
             {
                 var pts = _touchContacts.Values.ToArray();
                 var scale = (pts[0] - pts[1]).Length / _pinchStartDistance;
+                // Only a real pinch zooms; small wobbles during a two-finger tap do not.
+                if (Math.Abs(scale - 1) < 0.12) return;
+                _tapSpoiled = true;
                 var factor = Math.Round(Math.Clamp(_pinchStartZoom * scale, 1, 16), 1);
                 _manager?.RequestPinchZoom(factor);
             }
@@ -378,6 +392,13 @@ public partial class OverlayWindow
         {
             _touchContacts.Remove(e.TouchDevice.Id);
             if (_touchContacts.Count < 2) _pinchActive = false;
+            _tapStart.Remove(e.TouchDevice.Id);
+            if (_tapStart.Count == 0 && !_tapSpoiled && _tapMaxContacts >= 2 && DateTime.UtcNow - _tapBegan < TimeSpan.FromMilliseconds(400))
+            {
+                if (_tapMaxContacts == 2) { _manager?.Undo(); UI.Toast.Show("Undo (two-finger tap)"); }
+                else { _manager?.Redo(); UI.Toast.Show("Redo (three-finger tap)"); }
+                _tapSpoiled = true;
+            }
             UpdateStatusPill();
         };
         InputRoot.TouchUp += touchEnded;

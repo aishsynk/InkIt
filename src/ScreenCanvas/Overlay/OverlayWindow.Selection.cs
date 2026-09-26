@@ -344,6 +344,38 @@ public partial class OverlayWindow
         RenderSelection();
     }
 
+    /// <summary>Handwriting to text: the selected ink is read by Windows' handwriting recognizer and replaced by typed text.</summary>
+    private async void ConvertSelectionToText()
+    {
+        var strokes = _selection.OfType<Stroke>().ToList();
+        if (strokes.Count == 0) { UI.Toast.Show("Select some handwriting first"); return; }
+        UI.Toast.Show("Reading your handwriting...");
+        var text = await HandwritingRecognizer.RecognizeAsync(strokes);
+        if (text is null) { UI.Toast.Show("InkIt could not read that handwriting. Try writing a little larger."); return; }
+        var bounds = strokes.Select(s => s.GetBounds()).Aggregate(Rect.Union);
+        var first = strokes[0].DrawingAttributes;
+        var block = new TextBlock
+        {
+            Text = text,
+            FontFamily = new System.Windows.Media.FontFamily(_settings.FontFamily),
+            FontSize = Math.Clamp(bounds.Height * 0.62, 14, 120),
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(first.Color.R, first.Color.G, first.Color.B)),
+            IsHitTestVisible = false,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 4, ShadowDepth = 0, Opacity = 0.6, Color = Colors.Black }
+        };
+        Canvas.SetLeft(block, bounds.Left);
+        Canvas.SetTop(block, bounds.Top);
+        void Apply() { foreach (var s in strokes) RemoveAnnotation(s); RestoreAnnotation(block); }
+        void Revert() { RemoveAnnotation(block); foreach (var s in strokes) RestoreAnnotation(s); }
+        Apply();
+        PushEdit(Revert, Apply);
+        _selection.Clear();
+        _selection.Add(block);
+        RenderSelection();
+        UI.Toast.Show($"Converted to \"{text}\" - Undo brings the handwriting back");
+    }
+
     // ---------------------------------------------------------------- Visuals
 
     private void RenderSelection()
@@ -474,6 +506,7 @@ public partial class OverlayWindow
             thickness,
             Action(Labeled("Magnet", "Snap"), Tw.Amber300, Tw.Hex("#FDE68A"), Tw.Slate800, "Snap All Selected to Grid", SnapSelectionToGrid, new Thickness(6, 2, 6, 2)),
             Action(Labeled("Copy", "Duplicate"), Tw.Sky300, Tw.Sky200, Tw.Slate800, "Duplicate Selected (Ctrl+D)", DuplicateSelection, new Thickness(6, 2, 6, 2)),
+            Action(Labeled("Type", "To text"), Tw.Emerald300, Tw.Hex("#A7F3D0"), Tw.Slate800, "Turn selected handwriting into typed text", ConvertSelectionToText, new Thickness(6, 2, 6, 2)),
             Action(new LucideIcon("Trash2", 14), Tw.Rose400, Tw.Rose300, Tw.WithAlpha(Tw.Rose950, 0.6), "Delete Selected (Del)", DeleteSelection),
             Action(new LucideIcon("X", 14), Tw.Slate400, Colors.White, Tw.Slate800, "Clear Selection (Esc)", ClearSelection)
         }};

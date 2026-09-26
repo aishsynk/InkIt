@@ -528,6 +528,7 @@ public partial class OverlayWindow : Window
             e.Handled = true;
             return;
         }
+        SnapConnector(completed);
         CommitAnnotation(completed);
         if (!_settings.StickyTools) _manager?.DeactivateCurrentTool(ToolDeactivationReason.CursorSelected);
         e.Handled = true;
