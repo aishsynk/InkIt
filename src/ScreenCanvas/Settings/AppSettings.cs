@@ -7,7 +7,7 @@ public enum AppTheme { System, Light, Dark }
 public sealed class AppSettings
 {
     /// <summary>Bumped when the InkIt design defaults are applied to an older settings file.</summary>
-    public const int CurrentDesignVersion = 6;
+    public const int CurrentDesignVersion = 7;
 
     public int SchemaVersion { get; set; } = 1;
     // Defaults to 0 so files written before this property existed are migrated.
@@ -51,6 +51,8 @@ public sealed class AppSettings
         if (Toolbar.Items is { } saved) Toolbar.Items = ScreenCanvas.UI.Toolbar.ToolbarCatalog.Canonicalize(saved);
         // v5: smart shapes are on by default (they can be turned off in the Pen panel).
         if (DesignVersion < 5) Canvas.AutoShapeAssist = true;
+        // v7: global tool shortcuts for pen-tablet express keys (Ctrl+Alt+Shift + C/P/H/E/A/O).
+        if (DesignVersion < 7) Hotkeys.AddTabletDefaults();
         DesignVersion = CurrentDesignVersion;
         return true;
     }

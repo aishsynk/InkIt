@@ -196,6 +196,20 @@ static class SettingsTests
         }
         check("every toolbar item has a group", ToolbarCatalog.Items.All(i => !string.IsNullOrEmpty(i.Group)), "");
 
+        check("upgrade: tablet tool shortcuts added", old.Hotkeys.Bindings.Count(b => b.Action.StartsWith("cmd:tool/")) == 6, "");
+
+        // XP-Pen: only the tablet's express-key lines change.
+        var xml = "<?xml version='1.0' encoding='utf-8'?>\n<PenTableLists>\n  <Other>\n    <CommonAPP>\n      <K>\n        <K1 Show=\"1\" Actid=\"9\" Motid=\"1\" id=\"0\"/>\n      </K>\n    </CommonAPP>\n  </Other>\n  <DecoMini7>\n    <CommonAPP>\n      <Pen>\n        <PenBtn1 Actid=\"207\" id=\"0\"/>\n      </Pen>\n      <K>\n        <K1 Show=\"1\" Actid=\"1\" Motid=\"1\" id=\"1\">1|Shift+Ctrl+@|Shift+Ctrl+@|16:42+17:29+50:3</K1>\n        <K2 Show=\"1\" Actid=\"101\" Motid=\"2\" id=\"1\">3|Pen/Eraser|3</K2>\n      </K>\n    </CommonAPP>\n  </DecoMini7>\n</PenTableLists>\n";
+        var path = Path2.Temp("inkit-xppen-test.xml");
+        File.WriteAllText(path, xml);
+        var written = ScreenCanvas.Support.XpPenSetup.WriteLayout(path, "DecoMini7", 2);
+        var before = xml.Split('\n');
+        var after = File.ReadAllText(path).Split('\n');
+        var changed = before.Zip(after).Count(p => p.First != p.Second);
+        check("XP-Pen: 2 keys written, only 2 lines changed", written == 2 && changed == 2 && before.Length == after.Length, $"(written {written}, changed {changed})");
+        check("XP-Pen: key 1 = Pointer, other tablets untouched", after.Any(l => l.Contains("Ctrl+Alt+Shift+C") && l.Contains("Actid=\"1\"")) && after.Any(l => l.Contains("Actid=\"9\"") && l.Contains("id=\"0\"")), "");
+        File.Delete(path);
+
         check("shortcut text: Ctrl+Shift+2", new HotkeyBinding("x", ModifierKeys.Control | ModifierKeys.Shift, Key.D2).DisplayText == "Ctrl+Shift+2", "");
         check("shortcut text: Ctrl+Shift+Del", new HotkeyBinding("x", ModifierKeys.Control | ModifierKeys.Shift, Key.Delete).DisplayText == "Ctrl+Shift+Del", "");
     }

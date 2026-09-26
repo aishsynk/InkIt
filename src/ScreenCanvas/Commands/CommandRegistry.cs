@@ -259,6 +259,8 @@ public sealed class CommandRegistry
             ["update", "upgrade", "new version", "download"], () => toolbar.CheckForUpdates(manual: true));
         Add("tools.tour", "Quick Tour", CapabilityCategory.Tools, "A 5-step tour of the buttons you need first", "Compass", null,
             ["tour", "help", "tutorial", "getting started", "how to"], toolbar.StartTour);
+        Add("tools.xppen_setup", "Set Up XP-Pen Keys", CapabilityCategory.Tools, "Put pointer, pen, highlighter, eraser, arrow, circle, undo and zoom on your XP-Pen express keys", "Pen", null,
+            ["xp-pen", "xppen", "tablet", "express keys", "drawing tablet", "wacom"], () => UI.Toast.Show(Support.XpPenSetup.Apply()));
         Add("tools.exit", "Exit InkIt", CapabilityCategory.Tools, "Close every overlay and quit InkIt", "Power", null,
             ["exit", "quit", "close"], toolbar.ExitApplication);
 

@@ -1242,9 +1242,42 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         Topmost = true;
     }
 
+    /// <summary>
+    /// Pen-tablet express keys and quick shortcuts: switch tool instantly, without opening panels, keeping the
+    /// pen and highlighter styles last used. Names: cursor, pen, highlighter, eraser, arrow, circle, box, line, text,
+    /// numbers, laser, spotlight.
+    /// </summary>
+    public bool SelectToolQuick(string tool)
+    {
+        CloseMenus();
+        switch (tool.ToLowerInvariant())
+        {
+            case "cursor" or "pointer": EndCurrentTool(); break;
+            case "pen": _overlay.SetPenMode(_lastPenMode); break;
+            case "highlighter": _overlay.SetPenMode(_lastHighlighterMode); break;
+            case "eraser": _overlay.SetTool(ToolKind.Eraser); break;
+            case "arrow": _overlay.SetShape(ShapeKind.Arrow); break;
+            case "circle": _overlay.SetShape(ShapeKind.Ellipse); break;
+            case "box": _overlay.SetShape(ShapeKind.Rectangle); break;
+            case "line": _overlay.SetShape(ShapeKind.Line); break;
+            case "text": _overlay.SetTool(ToolKind.Text); break;
+            case "numbers": _overlay.SetTool(ToolKind.NumberMarker); break;
+            case "laser": _overlay.SetTool(ToolKind.Laser); break;
+            case "spotlight": _overlay.SetTool(ToolKind.Spotlight); break;
+            default: return false;
+        }
+        RefreshItemStates();
+        return true;
+    }
+
     public void RunNamedCommand(string name)
     {
         var parts = name.Split('/', 2);
+        if (parts[0].Equals("tool", StringComparison.OrdinalIgnoreCase) && parts.Length == 2)
+        {
+            if (!SelectToolQuick(parts[1])) Toast.Show($"InkIt does not know the tool \"{parts[1]}\"");
+            return;
+        }
         if (parts[0].Equals("color", StringComparison.OrdinalIgnoreCase) && parts.Length == 2)
         {
             var match = int.TryParse(parts[1], out var n) && n is >= 1 and <= 6

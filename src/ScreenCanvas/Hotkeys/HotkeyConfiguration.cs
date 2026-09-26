@@ -36,6 +36,31 @@ public sealed class HotkeyConfiguration
         new("Toggle zoom", ModifierKeys.Control | ModifierKeys.Shift, Key.D5)
     ];
 
+    /// <summary>
+    /// Global tool shortcuts meant for pen-tablet express keys (and handy on the keyboard): Ctrl+Alt+Shift + a letter.
+    /// Stored as ordinary "cmd:" bindings, so they can be changed or removed in Settings.
+    /// </summary>
+    public static IReadOnlyList<HotkeyBinding> TabletDefaults { get; } =
+    [
+        new("cmd:tool/cursor", ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift, Key.C),
+        new("cmd:tool/pen", ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift, Key.P),
+        new("cmd:tool/highlighter", ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift, Key.H),
+        new("cmd:tool/eraser", ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift, Key.E),
+        new("cmd:tool/arrow", ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift, Key.A),
+        new("cmd:tool/circle", ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift, Key.O),
+    ];
+
+    /// <summary>Adds the tablet tool shortcuts that are not there yet (skipping any key combination already in use).</summary>
+    public void AddTabletDefaults()
+    {
+        foreach (var binding in TabletDefaults)
+        {
+            if (Bindings.Any(b => b.Action == binding.Action)) continue;
+            if (Bindings.Any(b => !b.IsEmpty && b.Key == binding.Key && b.Modifiers == binding.Modifiers)) continue;
+            Bindings.Add(binding);
+        }
+    }
+
     /// <summary>Adds default bindings for actions introduced after the settings file was written.</summary>
     public void EnsureDefaults()
     {

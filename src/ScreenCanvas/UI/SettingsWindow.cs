@@ -241,7 +241,10 @@ public sealed class SettingsWindow : ModalHost
         {
             table.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var isCustom = binding.Action.StartsWith(HotkeyManager.CommandPrefix, StringComparison.Ordinal);
-            var actionName = isCustom ? _toolbar.Registry.Find(binding.Action[HotkeyManager.CommandPrefix.Length..])?.Name ?? binding.Action : binding.Action;
+            var commandName = isCustom ? binding.Action[HotkeyManager.CommandPrefix.Length..] : string.Empty;
+            var actionName = !isCustom ? binding.Action
+                : commandName.StartsWith("tool/", StringComparison.Ordinal) ? $"Select {commandName[5..]} (tablet key)"
+                : _toolbar.Registry.Find(commandName)?.Name ?? commandName;
             Cell(DK.Text(actionName, 12, "Ink.Text", FontWeights.Medium), row, 0, false);
             var capturing = _capturingAction == binding.Action;
             var keysText = capturing ? "Press keys…" : binding.DisplayText;
@@ -293,7 +296,34 @@ public sealed class SettingsWindow : ModalHost
         var status = DK.Text(_hotkeyStatus, 12, Tw.B(Tw.Amber400)).Wrap();
         var footer = DK.Between(reset, status);
         footer.Margin = new Thickness(0, 12, 0, 0);
-        return DK.V(0, header, frame, footer, more);
+        return DK.V(0, header, frame, footer, more, TabletSection());
+    }
+
+    /// <summary>Pen tablet: which express key does what, and one click to set up an XP-Pen tablet.</summary>
+    private UIElement TabletSection()
+    {
+        var tablet = Support.XpPenSetup.DetectTablet();
+        var intro = DK.Text(tablet is { } t
+                ? $"Found your XP-Pen {t.Name} with {t.Keys} express keys. InkIt can put the teaching tools on them, top key first:"
+                : "Using a pen tablet? Its express keys can send these shortcuts (works with any tablet app). XP-Pen tablets can be set up with one click:",
+            12, "Ink.Text400").Wrap();
+        var rows = DK.V(4, Support.XpPenSetup.Layout.Take(tablet?.Keys is > 0 and var k ? k : 8).Select((a, i) =>
+        {
+            var name = DK.Text($"Key {i + 1}:  {a.Tool}", 12, "Ink.Text", FontWeights.Medium);
+            var keys = DK.Kbd(a.Shortcut, "Ink.KbdText", "Ink.Kbd950", "Ink.BorderStrong", 11, new Thickness(6, 1, 6, 1));
+            return (UIElement)DK.Between(name, keys);
+        }).ToArray());
+        rows.Margin = new Thickness(0, 6, 0, 6);
+        var status = DK.Text(string.Empty, 12, Tw.B(Tw.Emerald400)).Wrap();
+        var setup = DK.Button(DK.IconLabel("Pen", 13, "Set up my XP-Pen keys", 12, spacing: 6), Tw.B(Tw.Blue600), Tw.B(Colors.White), Tw.B(Tw.Blue500), Tw.B(Colors.White), 8, new Thickness(12, 6, 12, 6));
+        setup.ToolTip = "Writes these keys into the XP-Pen app (a backup is kept) and restarts it for a moment";
+        setup.IsEnabled = tablet is { Keys: > 0 };
+        setup.Click += (_, _) => { status.Text = Support.XpPenSetup.Apply(); _settings.Hotkeys.AddTabletDefaults(); CommitHotkeys(); };
+        var undo = DK.Button(DK.IconLabel("RotateCcw", 13, "Undo XP-Pen setup", 12, spacing: 6), "Ink.Control", "Ink.Text200", "Ink.ControlHover", "Ink.Text", 8, new Thickness(12, 6, 12, 6));
+        undo.IsEnabled = Support.XpPenSetup.HasBackup;
+        undo.Click += (_, _) => { status.Text = Support.XpPenSetup.Restore(); Render(); };
+        var tip = DK.Text("Pen side button: set one button to \"Mouse right click\" in the XP-Pen app - while drawing, it opens InkIt's tool wheel (laser, spotlight, screenshot and more).", 11, "Ink.Text400").Wrap();
+        return Ruled(Section("Pen tablet (XP-Pen)", intro, rows, DK.H(8, setup, undo), status, tip));
     }
 
     private FrameworkElement RemoveButton(string action)
