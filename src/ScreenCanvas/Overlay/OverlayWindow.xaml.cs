@@ -415,6 +415,7 @@ public partial class OverlayWindow : Window
         _board = kind;
         UpdateBoardSurface();
         if (kind != BoardKind.Transparent && !IsVisible) Show();
+        RefreshPageBar();
     }
 
     private void UpdateBoardSurface()

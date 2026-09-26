@@ -79,6 +79,7 @@ public partial class InspectorWindow : Window
         };
         _overlay.OptionsChanged += (_, _) => Dispatcher.BeginInvoke(RebuildIfExternal);
         _overlay.ToolChanged += (_, _) => Dispatcher.BeginInvoke(RebuildIfExternal);
+        _overlay.PagesChanged += (_, _) => Dispatcher.BeginInvoke(RebuildIfExternal);
         Settings.ThemeManager.ThemeChanged += (_, _) => Dispatcher.BeginInvoke(() => { if (IsVisible) Rebuild(); });
     }
 
@@ -538,7 +539,40 @@ public partial class InspectorWindow : Window
             };
             return (UIElement)card;
         }).ToArray());
-        return DK.V(12, intro, cards, DK.TopRule(SnapBlock(s, "Snap to Grid Alignment", "Grid Step Size", false)));
+        return DK.V(12, intro, cards, BuildPagesBlock(), DK.TopRule(SnapBlock(s, "Snap to Grid Alignment", "Grid Step Size", false)));
+    }
+
+    /// <summary>Pages of drawings: move between them, add, delete, export to PDF, save and open.</summary>
+    private UIElement BuildPagesBlock()
+    {
+        Button Small(string icon, string tip, Action run)
+        {
+            var b = DK.Button(new LucideIcon(icon, 15), "Ink.Control", "Ink.Text200", "Ink.ControlHover", "Ink.Text", 8, new Thickness(7, 5, 7, 5));
+            b.ToolTip = tip;
+            b.Click += (_, _) => { run(); Rebuild(); };
+            return b;
+        }
+        Button Wide(string icon, string label, string tip, Action run)
+        {
+            var b = DK.Button(DK.IconLabel(icon, 14, label, 12, spacing: 6), "Ink.Control", "Ink.Text200", "Ink.ControlHover", "Ink.Text", 8, new Thickness(8, 6, 8, 6));
+            b.HorizontalContentAlignment = HorizontalAlignment.Center;
+            b.ToolTip = tip;
+            b.Click += (_, _) => run();
+            return b;
+        }
+        if (_overlay.IsFollowingSlides)
+            return DK.TopRule(DK.Text("Following your PowerPoint slides: each slide keeps its own drawings.", 11, "Ink.Text400").Wrap());
+        var label = DK.Text($"Page {_overlay.PageIndex + 1} of {_overlay.PageCount}", 13, "Ink.Text", FontWeights.SemiBold);
+        label.VerticalAlignment = VerticalAlignment.Center;
+        var nav = DK.Between(DK.H(6, Small("ChevronLeft", "Previous page (Page Up)", _overlay.PreviousPage), label, Small("ChevronRight", "Next page (Page Down)", _overlay.NextPage)),
+            DK.H(6, Small("Plus", "Add a blank page", _overlay.AddPage), Small("Trash2", "Delete this page", _overlay.DeletePage)));
+        var files = DK.Columns(3, 6, new UIElement[]
+        {
+            Wide("FileDown", "PDF", "Export every page as one PDF to share with learners", _owner.ExportPagesPdf),
+            Wide("Save", "Save", "Save these pages to open again later (Ctrl+S)", _owner.SaveDrawings),
+            Wide("FolderOpen", "Open", "Open saved drawings (Ctrl+O)", _owner.OpenDrawings),
+        });
+        return DK.TopRule(DK.V(8, DK.Text("Pages", 12, "Ink.Text400"), nav, files));
     }
 
     // ---- Grid ---------------------------------------------------------------------

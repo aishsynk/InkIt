@@ -48,6 +48,7 @@ public partial class OverlayWindow
         ZoomImage.Source = image;
         ZoomSurface.Visibility = Visibility.Visible;
         ShowZoomBar();
+        RefreshPageBar();
         if (!IsVisible) Show();
     }
 
@@ -71,6 +72,7 @@ public partial class OverlayWindow
         ZoomImage.Source = null;
         ZoomSurface.Visibility = Visibility.Collapsed;
         if (_zoomBar is not null) _zoomBar.Visibility = Visibility.Collapsed;
+        RefreshPageBar();
         if (_settings.Tool == Core.ToolKind.Cursor && !HasVisibleContent) Hide();
     }
 

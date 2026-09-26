@@ -169,6 +169,18 @@ public sealed class CommandRegistry
             ["whiteboard", "clean canvas", "lecture", "teaching"], () => overlay.SetBoardKind(BoardKind.Whiteboard), () => overlay.CurrentBoard == BoardKind.Whiteboard);
         Add("board.blackboard", "Blackboard", CapabilityCategory.Board, "Cover the screen with a dark chalkboard", "Square", "F3",
             ["blackboard", "chalkboard", "dark mode canvas"], () => overlay.SetBoardKind(BoardKind.Blackboard), () => overlay.CurrentBoard == BoardKind.Blackboard);
+        Add("board.next_page", "Next Page", CapabilityCategory.Board, "Go to the next page of drawings (adds a blank page after the last)", "ChevronRight", "Page Down",
+            ["next page", "new page", "page down"], overlay.NextPage);
+        Add("board.previous_page", "Previous Page", CapabilityCategory.Board, "Go back to the previous page of drawings", "ChevronLeft", "Page Up",
+            ["previous page", "back", "page up"], overlay.PreviousPage);
+        Add("board.new_page", "New Page", CapabilityCategory.Board, "Add a blank page after this one", "Plus", null,
+            ["add page", "blank page", "new page"], overlay.AddPage);
+        Add("board.export_pdf", "Export Pages as PDF", CapabilityCategory.Board, "Save every page of drawings as one PDF to share", "FileDown", null,
+            ["pdf", "export", "handout", "share notes"], toolbar.ExportPagesPdf);
+        Add("file.save", "Save Drawings", CapabilityCategory.Board, "Save your pages of drawings to open again later", "Save", "Ctrl+S",
+            ["save", "keep", "store"], toolbar.SaveDrawings);
+        Add("file.open", "Open Drawings", CapabilityCategory.Board, "Open drawings you saved earlier", "FolderOpen", "Ctrl+O",
+            ["open", "load", "prepared"], toolbar.OpenDrawings);
         Add("board.grid", "Grid Paper", CapabilityCategory.Board, "Cover the screen with squared grid paper", "Grid", "F4",
             ["grid", "graph", "blueprint", "math", "coordinates"], () =>
             {

@@ -101,6 +101,68 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
     public bool IsZoomAreaActive { get; private set; }
     public void RequestZoomArea() => ZoomAreaRequested?.Invoke(this, EventArgs.Empty);
 
+    // ------------------------------------------------------------------ Pages and slides
+
+    public event EventHandler? PagesChanged;
+
+    /// <summary>The overlay on the monitor under the mouse (created if needed): pages belong to it.</summary>
+    private OverlayWindow ActiveWindow()
+    {
+        var display = _displayManager.GetDisplayAtCursor() ?? throw new InvalidOperationException("No display found.");
+        EnsureOverlay(display);
+        return _windows[display.DeviceName];
+    }
+
+    public int PageCount => _windows.Count == 0 ? 1 : ActiveWindow().PageCount;
+    public int PageIndex => _windows.Count == 0 ? 0 : ActiveWindow().PageIndex;
+    public bool IsFollowingSlides => _windows.Values.Any(w => w.IsFollowingSlides);
+
+    private void ChangePage(Action<OverlayWindow> change)
+    {
+        ExitZoomArea();
+        change(ActiveWindow());
+        PagesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void NextPage() => ChangePage(w => { if (w.PageIndex < w.PageCount - 1) w.GoToPage(w.PageIndex + 1); else w.AddPage(); });
+    public void PreviousPage() => ChangePage(w => w.GoToPage(w.PageIndex - 1));
+    public void AddPage() => ChangePage(w => w.AddPage());
+    public void DeletePage() => ChangePage(w => w.DeleteCurrentPage());
+
+    /// <summary>Every page rendered as a picture on the board colour (white for the plain screen).</summary>
+    public IReadOnlyList<System.Windows.Media.Imaging.BitmapSource> RenderPages()
+    {
+        var window = ActiveWindow();
+        var background = window.PageBackground(forExport: true);
+        return window.SnapshotPages().Select(p => window.RenderPage(p, background)).ToList();
+    }
+
+    public void SavePages(string path) => InkFile.Save(path, ActiveWindow().SnapshotPages());
+
+    public void OpenPages(string path)
+    {
+        var pages = InkFile.Load(path);
+        ChangePage(w => w.ReplacePages(pages));
+        if (Settings.Tool == ToolKind.Cursor) SetTool(ToolKind.Pen);
+    }
+
+    /// <summary>A PowerPoint slide is showing on the monitor that contains <paramref name="screenPoint"/>.</summary>
+    public void ShowSlide(string slideKey, System.Drawing.Point screenPoint)
+    {
+        var screen = System.Windows.Forms.Screen.FromPoint(screenPoint);
+        var display = new DisplayInfo(screen.DeviceName, screen.Bounds.Left, screen.Bounds.Top, screen.Bounds.Width, screen.Bounds.Height, screen.Primary);
+        EnsureOverlay(display);
+        ExitZoomArea();
+        _windows[display.DeviceName].ShowSlide(slideKey);
+        PagesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void EndSlides()
+    {
+        foreach (var window in _windows.Values) window.EndSlides();
+        PagesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public event EventHandler? FocusBoxChanged;
     public bool IsFocusBoxActive { get; private set; }
 

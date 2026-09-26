@@ -35,6 +35,21 @@ public interface IOverlayManager
     void ShowZoomArea(System.Windows.Media.ImageSource image, System.Drawing.Rectangle pixelBounds);
     void ExitZoomArea();
     void RequestZoomArea();
+    /// <summary>Raised when the page changes, pages are added/removed, or slide drawings switch.</summary>
+    event EventHandler? PagesChanged;
+    int PageCount { get; }
+    int PageIndex { get; }
+    bool IsFollowingSlides { get; }
+    /// <summary>Next page (adds a blank one after the last).</summary>
+    void NextPage();
+    void PreviousPage();
+    void AddPage();
+    void DeletePage();
+    IReadOnlyList<System.Windows.Media.Imaging.BitmapSource> RenderPages();
+    void SavePages(string path);
+    void OpenPages(string path);
+    void ShowSlide(string slideKey, System.Drawing.Point screenPoint);
+    void EndSlides();
     /// <summary>Raised when the focus box (dim everything except an area) appears or goes away.</summary>
     event EventHandler? FocusBoxChanged;
     bool IsFocusBoxActive { get; }

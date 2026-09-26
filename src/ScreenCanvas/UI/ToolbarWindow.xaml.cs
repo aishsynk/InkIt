@@ -1071,6 +1071,76 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
     public void ToggleCodeFocus() =>
         _codeFocus.Value.Toggle(_overlay.Settings.CodeFocusBandHeight, _overlay.Settings.CodeFocusDimOpacity);
 
+    private static string DrawingsFolder()
+    {
+        var folder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "InkIt");
+        System.IO.Directory.CreateDirectory(folder);
+        return folder;
+    }
+
+    /// <summary>Every page as one PDF, to send to learners after class.</summary>
+    public void ExportPagesPdf()
+    {
+        CloseMenus();
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Export pages as PDF", Filter = "PDF document (*.pdf)|*.pdf", DefaultExt = ".pdf",
+            InitialDirectory = DrawingsFolder(), FileName = $"InkIt notes {DateTime.Now:yyyy-MM-dd HH.mm}"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            var pages = _overlay.RenderPages();
+            PdfWriter.Write(dialog.FileName, pages);
+            Toast.Show($"Exported {pages.Count} page{(pages.Count == 1 ? "" : "s")} to {System.IO.Path.GetFileName(dialog.FileName)}");
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            Toast.Show("Could not save the PDF: " + ex.Message);
+        }
+    }
+
+    public void SaveDrawings()
+    {
+        CloseMenus();
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save drawings", Filter = Overlay.InkFile.Filter, DefaultExt = Overlay.InkFile.Extension,
+            InitialDirectory = DrawingsFolder(), FileName = $"InkIt drawings {DateTime.Now:yyyy-MM-dd HH.mm}"
+        };
+        if (dialog.ShowDialog(this) != true) return;
+        try
+        {
+            _overlay.SavePages(dialog.FileName);
+            Toast.Show($"Saved {System.IO.Path.GetFileName(dialog.FileName)}");
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+        {
+            Toast.Show("Could not save: " + ex.Message);
+        }
+    }
+
+    public void OpenDrawings()
+    {
+        CloseMenus();
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "Open drawings", Filter = Overlay.InkFile.Filter, InitialDirectory = DrawingsFolder() };
+        if (dialog.ShowDialog(this) != true) return;
+        OpenDrawings(dialog.FileName);
+    }
+
+    public void OpenDrawings(string path)
+    {
+        try
+        {
+            _overlay.OpenPages(path);
+            Toast.Show($"Opened {System.IO.Path.GetFileName(path)} ({_overlay.PageCount} page{(_overlay.PageCount == 1 ? "" : "s")})");
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or System.IO.InvalidDataException or UnauthorizedAccessException or System.Text.Json.JsonException or System.Windows.Markup.XamlParseException)
+        {
+            Toast.Show("That file could not be opened: " + ex.Message);
+        }
+    }
+
     /// <summary>Focus box: drag a box; everything else is dimmed while the apps underneath keep working.</summary>
     public void FocusOnArea()
     {
@@ -1267,6 +1337,10 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             (true, true, false, Key.X) => "privacy.blackout",
             (true, true, false, Key.Y) => "annot.redo",
             (true, false, false, Key.OemComma) => "tools.settings",
+            (true, false, false, Key.S) => "file.save",
+            (true, false, false, Key.O) => "file.open",
+            (false, false, false, Key.PageDown) => "board.next_page",
+            (false, false, false, Key.PageUp) => "board.previous_page",
             (false, true, true, Key.P) => "present.pointer_effects",
             (false, false, false, Key.F10) => "tools.capability_centre",
             (false, false, false, Key.F1) => "board.transparent",
