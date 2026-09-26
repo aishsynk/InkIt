@@ -198,6 +198,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _toolbar?.FinishRecording();
         _hotkeys?.Dispose();
         _tray?.Dispose();
         _single?.Dispose();

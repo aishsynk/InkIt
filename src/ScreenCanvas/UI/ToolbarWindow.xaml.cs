@@ -541,6 +541,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         "spotlight" when s.Tool == ToolKind.Spotlight => (true, Tw.Amber500, Tw.Slate950, null),
         "zoom" when IsZoomActive => (true, Tw.Indigo600, Colors.White, null),
         "focus" when _overlay.IsFocusBoxActive => (true, Tw.Amber500, Colors.White, null),
+        "record" when IsRecording => (true, Tw.Red600, Colors.White, null),
         "board" when _overlay.CurrentBoard != BoardKind.Transparent => (true, Tw.Slate700, Colors.White, Tw.Blue400),
         "more" when _inspector?.CurrentCategory == "more" && IsPaletteOpen => (true, Tw.Slate700, Colors.White, null),
         _ => (false, Colors.Transparent, Colors.Transparent, null)
@@ -706,6 +707,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             case "palette": OpenCommandPalette(); break;
             case "capability": OpenCapabilityCentre(); break;
             case "capture": CaptureRegionWithPreview(); break;
+            case "record": ToggleRecording(); break;
             case "focus": if (_overlay.IsFocusBoxActive) _overlay.HideFocusBox(); else FocusOnArea(); break;
             case "collapse": _collapsed = true; CloseMenus(); BuildStrip(); BuildFooter(); break;
         }
@@ -1290,6 +1292,35 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             ApplyFollowSlides();
             Toast.Show(value ? "Drawings now stay with each PowerPoint slide" : "Drawings no longer follow PowerPoint slides");
         }
+    }
+
+    // ------------------------------------------------------------------ Lesson recording
+
+    private RecordingBar? _recording;
+    public bool IsRecording => _recording?.IsRecording == true;
+
+    /// <summary>Record button / inkit://record: start (choose screen or area) or stop the lesson recording.</summary>
+    public void ToggleRecording()
+    {
+        CloseMenus();
+        _recording ??= new RecordingBar(this);
+        if (_recording.IsRecording) _ = _recording.StopAsync();
+        else _recording.ShowSetup();
+    }
+
+    internal void OnRecordingChanged() => RefreshItemStates();
+
+    internal void SaveAppSettings() => SaveSettings();
+
+    internal System.Drawing.Rectangle? SelectArea(string hint) => _capture.SelectRegion(this, hint);
+
+    internal void ShowNotice(string icon, string title, string message, IReadOnlyList<NoticeAction> actions) =>
+        Notice.Present(icon, title, message, actions);
+
+    /// <summary>Finishes a running recording so the video file is complete (called when InkIt exits).</summary>
+    public void FinishRecording()
+    {
+        if (_recording?.IsRecording == true) _recording.StopAsync().GetAwaiter().GetResult();
     }
 
     public void SendFeedback() => Support.Links.Open(Support.Links.Review);

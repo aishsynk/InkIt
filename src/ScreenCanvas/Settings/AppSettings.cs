@@ -7,7 +7,7 @@ public enum AppTheme { System, Light, Dark }
 public sealed class AppSettings
 {
     /// <summary>Bumped when the InkIt design defaults are applied to an older settings file.</summary>
-    public const int CurrentDesignVersion = 5;
+    public const int CurrentDesignVersion = 6;
 
     public int SchemaVersion { get; set; } = 1;
     // Defaults to 0 so files written before this property existed are migrated.
@@ -119,6 +119,8 @@ public sealed class PresentationSettings
     public bool ZoomFollowsMouse { get; set; }
     /// <summary>During a PowerPoint slide show, each slide keeps its own drawings.</summary>
     public bool FollowSlides { get; set; } = true;
+    /// <summary>Lesson recordings include the microphone.</summary>
+    public bool RecordMicrophone { get; set; } = true;
 }
 
 public sealed class CanvasSettings
