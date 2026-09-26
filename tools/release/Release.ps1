@@ -94,6 +94,23 @@ $latest = (gh release list --repo $Repo --limit 1 --json tagName --jq '.[0].tagN
 if ($currentNumber -eq 0) { if ($latest) { Fail "version.txt says nothing is released, but GitHub already has $latest." } }
 elseif ($latest -ne "v$current") { Fail "GitHub's latest release is '$latest' but version.txt says $current. Fix this first so no number is skipped (see -RetryUpload)." }
 
+# ---------------------------------------------------------------- Test
+Step 'Running InkIt checks'
+dotnet build ScreenCanvas.slnx -c Release -nologo | Out-Null
+if ($LASTEXITCODE -ne 0) { Fail 'Build failed.' }
+dotnet run --project tests/InkIt.Tests -c Release --no-build
+if ($LASTEXITCODE -ne 0) { Fail 'Some checks failed; nothing was released.' }
+
+# Optional code signing: set INKIT_SIGN_THUMBPRINT to a code-signing certificate in your Windows certificate store.
+function Sign-File([string]$file)
+{
+    if (-not $env:INKIT_SIGN_THUMBPRINT) { return }
+    $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
+    if (-not $signtool) { Fail 'INKIT_SIGN_THUMBPRINT is set but signtool.exe (Windows SDK) was not found.' }
+    & $signtool.FullName sign /sha1 $env:INKIT_SIGN_THUMBPRINT /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $file
+    if ($LASTEXITCODE -ne 0) { Fail "Signing failed: $file" }
+}
+
 # ---------------------------------------------------------------- Build
 Step 'Publishing self-contained win-x64 build'
 $publish = Join-Path $Root 'artifacts\publish\win-x64'
@@ -102,6 +119,7 @@ dotnet publish src/ScreenCanvas/ScreenCanvas.csproj -c Release -r win-x64 --self
 if ($LASTEXITCODE -ne 0) { Fail 'dotnet publish failed.' }
 $stamped = (Get-Item (Join-Path $publish 'InkIt.exe')).VersionInfo.FileVersion
 if ($stamped -ne $next) { Fail "InkIt.exe carries version '$stamped', expected $next." }
+Sign-File (Join-Path $publish 'InkIt.exe')
 
 Step 'Smoke test (renders the UI off-screen, then exits)'
 $smoke = Start-Process (Join-Path $publish 'InkIt.exe') -ArgumentList '--qa-capture' -PassThru
@@ -117,6 +135,7 @@ New-Item -ItemType Directory -Force $stage | Out-Null
 if ($LASTEXITCODE -ne 0) { Fail 'Installer compile failed.' }
 New-Item -ItemType Directory -Force (Join-Path $Root 'artifacts\installer') | Out-Null
 Copy-Item (Join-Path $stage "InkIt_Setup_v$next.exe") (Get-Installer $next) -Force
+Sign-File (Get-Installer $next)
 
 # ---------------------------------------------------------------- Record, push, publish
 Step "Recording $next"

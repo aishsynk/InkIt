@@ -39,6 +39,12 @@ It is built for people who **explain things on screen**: corporate trainers, tea
 | 🧑‍🏫 **Whiteboard** | Cover the screen with a whiteboard, blackboard or grid paper whenever you need a clean space. |
 | ↩️ **Undo, select and clear** | Move, recolour or delete what you drew; Undo even brings back a Clear. |
 | 🔎 **Search every feature** | Press **Ctrl+K** and type what you want - "zoom", "screenshot", "whiteboard". |
+| ✨ **Smart shapes** | Draw a rough circle, box, triangle or arrow and it becomes a clean shape. A "V" at the end of a line turns it into an arrow. Undo once keeps your freehand drawing. |
+| 🎬 **Record a lesson** | Record the whole screen or an area - with your drawings, pointer and voice - to an MP4 video. Pause any time. |
+| 📄 **Pages and PDF handouts** | Several whiteboard pages (Page Up/Down), export them as one PDF for learners, or save them and reopen later. |
+| 🖥️ **PowerPoint and second screen** | During a slide show each slide keeps its own drawings. Show the screen, an area or one window on the projector while your notes stay private. |
+| 🎯 **Focus box and stamps** | Dim everything except one area while apps keep working; place ✓ ✗ ? ! ★ stamps and sticky notes. |
+| ⌨️ **For experts** | Keys 1-6 for colours, [ ] for thickness, right-click tool wheel, two-finger tap undo, a shortcut for any feature, and `inkit://` links for Stream Deck and scripts. |
 
 ## Toolbar at a glance
 
@@ -77,7 +83,7 @@ While the toolbar is active: **P** pen, **H** highlighter, **E** eraser, **S** s
 2. Run it. No administrator rights are needed; InkIt installs for your user account and adds a Start menu entry (and, if you like, a desktop icon).
 3. If Windows shows **"Windows protected your PC"**, click **More info → Run anyway**. This appears because the installer is not code-signed yet.
 
-**Requirements:** Windows 10 version 2004 (build 19041) or later, or Windows 11, 64-bit. Everything InkIt needs is included; it works offline and uses no internet connection.
+**Requirements:** Windows 10 version 2004 (build 19041) or later, or Windows 11, 64-bit. Everything InkIt needs is included and it works offline. The only network request is an optional daily update check to GitHub (turn it off in Settings > About & Feedback).
 
 To uninstall, use **Settings → Apps → InkIt → Uninstall**.
 
@@ -85,7 +91,7 @@ To uninstall, use **Settings → Apps → InkIt → Uninstall**.
 
 - InkIt starts in **Cursor** mode: your clicks go to your apps until you pick a drawing tool.
 - **Esc** always stops drawing, and **Alt+Shift+X** (panic key) closes every tool and overlay instantly, even if the toolbar is hidden.
-- Nothing is uploaded: screenshots stay on your PC (clipboard or the file you choose), and settings are stored in `%LOCALAPPDATA%\InkIt`.
+- Nothing is uploaded: screenshots, recordings (Videos\InkIt) and saved drawings (Documents\InkIt) stay on your PC, and settings are stored in `%LOCALAPPDATA%\InkIt`.
 - "Copy text from screen" uses the offline Windows OCR engine and needs a Windows OCR language pack for your language.
 
 ## Screens
@@ -114,6 +120,7 @@ InkIt is in early testing. The most useful feedback is:
 
 - **Stack:** C# / WPF on .NET 8 (`net8.0-windows10.0.19041.0`), per-monitor DPI aware, no NuGet packages.
 - **Build:** `dotnet build ScreenCanvas.slnx -c Release`
+- **Checks:** `dotnet run --project tests/InkIt.Tests -c Release` (36 checks; run on every push by GitHub Actions)
 - **Run:** `src/ScreenCanvas/bin/Release/net8.0-windows10.0.19041.0/InkIt.exe`
 - **Release:** `pwsh tools/release/Release.ps1` - publishes a self-contained build stamped with the next version from `version.txt`, builds the Inno Setup installer and creates the GitHub release. See the script header for the numbering rules.
 - **Layout:** `src/ScreenCanvas` (app), `packaging/installer.iss` (installer), `tools/` (icon generator, release script), `AI/` (project notes and decisions). Test evidence: [QA_RESULTS.md](QA_RESULTS.md), [FEATURE_MATRIX.md](FEATURE_MATRIX.md).

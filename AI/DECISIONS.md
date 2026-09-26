@@ -152,3 +152,11 @@
 - Rationale: the user wants to share InkIt for reviews and asked for SQL-identity-style numbering starting from 0.0.0.0 and never skipping.
 - Feedback: GitHub issue forms (`review.yml`, `bug.yml`) plus a review web page. The installer is unsigned, so SmartScreen shows a warning; the README explains "More info → Run anyway".
 - Impact: supersedes the 1.0.0 installer name; the installer is now `InkIt_Setup_v<version>.exe`.
+
+## 2026-09-26 — Trainer feature set built without new dependencies
+
+- Decision: build the full suggested set (except the webcam bubble, which the user did not want): smart shapes, pages/PDF/.inkit, PowerPoint slide drawings, lesson recording, second-screen mirror, focus box, stamps, sticky notes, handwriting to text, quick keys, tool wheel on right-click, touch taps, shortcut for any feature, inkit:// links with single instance, tour, feedback, update check, start with Windows, crash log, tests and CI. Everything uses Windows and .NET built-ins (GDI, waveIn, Media Foundation through Windows.Media.Transcoding, DWM thumbnails, Windows.UI.Input.Inking, PowerPoint COM, a hand-written PDF writer); no NuGet packages.
+- Recording reverses the 2026-09-19 "Recording removed" decision at the user's request ("build all").
+- Network: the only request is the daily GitHub update check, which can be switched off.
+- Single instance: a second launch forwards its arguments over a named pipe. Developer switches (--settings, --qa-capture, --no-global-hotkeys) bypass it so QA copies can run side by side.
+- Impact: settings DesignVersion 6; toolbar gains Record (Present group), and Focus/Mirror are optional items.
