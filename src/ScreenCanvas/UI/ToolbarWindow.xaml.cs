@@ -1371,7 +1371,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         var advanced = _appSettings.Advanced;
         if (!manual)
         {
-            if (!advanced.CheckForUpdates) return;
+            if (!advanced.CheckForUpdates || AppInfo.Version == "0.0.0.0") return; // local, unreleased builds do not nag
             if (advanced.LastUpdateCheckUtc is { } last && DateTime.UtcNow - last < TimeSpan.FromHours(24)) return;
         }
         advanced.LastUpdateCheckUtc = DateTime.UtcNow;
