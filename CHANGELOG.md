@@ -10,6 +10,7 @@ Versions are numbered 0.0.0.1, 0.0.0.2, 0.0.0.3 ... - each release is exactly on
 - Drawings follow PowerPoint slides; show the screen, an area or a window on a second screen.
 - Focus box, stamps (tick, cross, ?, !, star), sticky notes, handwriting to text.
 - Quick keys (1-6 colours, [ ] thickness), right-click tool wheel, two/three-finger tap undo/redo, a shortcut for any feature, inkit:// links.
+- Pen tablets: global tool shortcuts (Ctrl+Alt+Shift + C/P/H/E/A/O) and one-click XP-Pen express-key setup (Pointer, Pen, Highlighter, Eraser, Arrow, Circle, Undo, Zoom).
 - First-run tour, Settings > About & Feedback, send feedback with the version filled in, optional update check, start with Windows, crash reports.
 
 ## 0.0.0.1 - 2026-09-26
