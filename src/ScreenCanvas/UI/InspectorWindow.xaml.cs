@@ -240,6 +240,17 @@ public partial class InspectorWindow : Window
         };
         pressure.SetResourceReference(Border.BorderBrushProperty, "Ink.Divider");
 
+        var smartText = DK.V(0, DK.Text("Smart Shapes", 12, "Ink.Text300"),
+            DK.Text("Rough circles, boxes, triangles and arrows become clean shapes. Undo once to keep your freehand drawing.", 10, "Ink.Text400").Wrap());
+        smartText.Margin = new Thickness(0, 0, 12, 0);
+        var smartSwitch = DK.Switch(s.AutoShapeAssist, v => _overlay.UpdateOptions(o => o.AutoShapeAssist = v), Tw.Purple500);
+        smartSwitch.VerticalAlignment = VerticalAlignment.Top;
+        smartSwitch.ToolTip = "Turn smart shapes on or off";
+        var smart = new Grid { ColumnDefinitions = { new ColumnDefinition(), new ColumnDefinition { Width = GridLength.Auto } } };
+        smart.Children.Add(smartText);
+        Grid.SetColumn(smartSwitch, 1);
+        smart.Children.Add(smartSwitch);
+
         var cards = PenModes.Select(m =>
         {
             var selected = _owner.LastPenMode == m.Mode;
@@ -262,7 +273,7 @@ public partial class InspectorWindow : Window
             Content = new Border { Padding = new Thickness(0, 0, 6, 0), Child = grid }
         };
         var modes = DK.V(6, DK.Text($"Pen Mode ({PenModes.Length})", 12, "Ink.Text400"), scroll);
-        return DK.V(12, thickness, opacity, pressure, modes);
+        return DK.V(12, thickness, opacity, pressure, smart, modes);
     }
 
     // ---- Shape ---------------------------------------------------------------

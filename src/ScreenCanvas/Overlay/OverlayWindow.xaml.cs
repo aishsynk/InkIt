@@ -293,19 +293,7 @@ public partial class OverlayWindow : Window
     /// <summary>Commits a finished stroke: auto-shape conversion, dashed/dotted patterning, history and fade.</summary>
     private void FinishStroke(Stroke stroke)
     {
-        if (_settings.AutoShapeAssist && _settings.Tool is ToolKind.Pen or ToolKind.Highlighter)
-        {
-            var points = stroke.StylusPoints.Select(p => new Point(p.X, p.Y)).ToList();
-            if (ShapeGeometry.Recognize(points) is { } recognized)
-            {
-                InkSurface.Strokes.Remove(stroke);
-                var path = NewShapePath(recognized.Kind);
-                path.Data = ShapeGeometry.Build(recognized.Kind, recognized.Start, recognized.End, _settings.Thickness);
-                ShapeSurface.Children.Add(path);
-                CommitAnnotation(path);
-                return;
-            }
-        }
+        if (_settings.AutoShapeAssist && _settings.Tool is ToolKind.Pen or ToolKind.Highlighter && TrySmartShape(stroke)) return;
         if (_settings.Tool == ToolKind.Pen && _settings.PenMode is PenMode.Dashed or PenMode.Dotted)
         {
             InkSurface.Strokes.Remove(stroke);

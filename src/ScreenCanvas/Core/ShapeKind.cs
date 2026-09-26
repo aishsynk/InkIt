@@ -8,5 +8,7 @@ public enum ShapeKind
     Rectangle,
     RoundedRectangle,
     Ellipse,
-    Diamond
+    Diamond,
+    /// <summary>Only produced by smart shapes (a hand-drawn triangle).</summary>
+    Triangle
 }

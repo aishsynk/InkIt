@@ -7,7 +7,7 @@ public enum AppTheme { System, Light, Dark }
 public sealed class AppSettings
 {
     /// <summary>Bumped when the InkIt design defaults are applied to an older settings file.</summary>
-    public const int CurrentDesignVersion = 4;
+    public const int CurrentDesignVersion = 5;
 
     public int SchemaVersion { get; set; } = 1;
     // Defaults to 0 so files written before this property existed are migrated.
@@ -49,6 +49,8 @@ public sealed class AppSettings
         }
         // v4: buttons follow the grouped order (pointer, pen first ... search last); visibility is kept.
         if (Toolbar.Items is { } saved) Toolbar.Items = ScreenCanvas.UI.Toolbar.ToolbarCatalog.Canonicalize(saved);
+        // v5: smart shapes are on by default (they can be turned off in the Pen panel).
+        if (DesignVersion < 5) Canvas.AutoShapeAssist = true;
         DesignVersion = CurrentDesignVersion;
         return true;
     }
@@ -119,6 +121,6 @@ public sealed class CanvasSettings
     public bool ShowGridGuides { get; set; } = true;
     public bool SimultaneousLaser { get; set; }
     public bool SimultaneousSpotlight { get; set; }
-    public bool AutoShapeAssist { get; set; }
+    public bool AutoShapeAssist { get; set; } = true;
     public bool ShowStatusPill { get; set; } = true;
 }

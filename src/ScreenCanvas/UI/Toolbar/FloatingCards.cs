@@ -150,7 +150,7 @@ public sealed class MultiToolWindow : FloatingCard
                 () => _overlay.UpdateOptions(o => o.SimultaneousSpotlight = !o.SimultaneousSpotlight)),
             Row("Magnet", "Snap-to-Grid Magnet", $"Lock points to {s.GridSize}px grid", s.SnapToGrid, Tw.Blue400, Tw.Blue600, Tw.Blue950, Tw.Blue500,
                 () => _overlay.UpdateOptions(o => o.SnapToGrid = !o.SnapToGrid)),
-            Row("Wand2", "Auto-Shape Assist", "Auto-beautifies rough loops & lines", s.AutoShapeAssist, Tw.Purple400, Tw.Purple600, Tw.Purple950, Tw.Purple500,
+            Row("Wand2", "Smart Shapes", "Rough circles, boxes & arrows become clean shapes", s.AutoShapeAssist, Tw.Purple400, Tw.Purple600, Tw.Purple950, Tw.Purple500,
                 () => _overlay.UpdateOptions(o => o.AutoShapeAssist = !o.AutoShapeAssist)));
 
         Card.Child = DK.V(0, header, intro, rows);

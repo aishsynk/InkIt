@@ -67,12 +67,13 @@ public sealed class ToolSettings
     // Multi-tool stacking modifiers
     public bool SimultaneousLaser { get; set; }
     public bool SimultaneousSpotlight { get; set; }
-    public bool AutoShapeAssist { get; set; }
+    /// <summary>Smart shapes: rough circles, boxes, triangles, lines and arrows drawn with the pen become clean shapes.</summary>
+    public bool AutoShapeAssist { get; set; } = true;
 
     public bool ShowStatusPill { get; set; } = true;
 
     public int ActiveModifierCount =>
-        (SimultaneousLaser ? 1 : 0) + (SimultaneousSpotlight ? 1 : 0) + (AutoShapeAssist ? 1 : 0) + (SnapToGrid ? 1 : 0);
+        (SimultaneousLaser ? 1 : 0) + (SimultaneousSpotlight ? 1 : 0) + (SnapToGrid ? 1 : 0);
 
     public Point Snap(Point point) => !SnapToGrid || GridSize <= 0
         ? point

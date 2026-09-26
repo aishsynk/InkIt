@@ -552,7 +552,6 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             laser.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0.4, TimeSpan.FromSeconds(1)) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
             grid.Children.Add(laser);
         }
-        if (s.AutoShapeAssist) grid.Children.Add(Dot(Tw.Purple400, HorizontalAlignment.Right, VerticalAlignment.Top));
     }
 
     private void RefreshControlStates(ToolSettings s)
@@ -574,7 +573,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         if (_multiButton is not null && _multiBadge is not null && _multiBadgeText is not null)
         {
             var open = _multiTool?.IsVisible == true;
-            var anyModifier = s.SimultaneousLaser || s.SimultaneousSpotlight || s.AutoShapeAssist;
+            var anyModifier = s.SimultaneousLaser || s.SimultaneousSpotlight;
             if (open)
             {
                 DK.Recolor(_multiButton, Tw.B(Tw.Purple600), Tw.B(Colors.White), Tw.B(Tw.Purple600), Tw.B(Colors.White), Tw.B(Tw.Purple400), Tw.B(Tw.Purple400));
@@ -654,7 +653,6 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         if (s.SnapToGrid) Badge($"Snap:{s.GridSize}", Tw.Blue300, Tw.WithAlpha(Tw.Blue900, 0.6), Tw.WithAlpha(Tw.Blue700, 0.5));
         if (s.SimultaneousLaser) Badge("+Laser", Tw.Rose300, Tw.WithAlpha(Tw.Rose950, 0.8), Tw.WithAlpha(Tw.Rose700, 0.5));
         if (s.SimultaneousSpotlight) Badge("+Spotlight", Tw.Amber300, Tw.WithAlpha(Tw.Amber950, 0.8), Tw.WithAlpha(Tw.Amber700, 0.5));
-        if (s.AutoShapeAssist) Badge("+SmartShape", Tw.Purple300, Tw.WithAlpha(Tw.Purple950, 0.8), Tw.WithAlpha(Tw.Purple700, 0.5));
     }
 
     private void OnOptionsChanged()

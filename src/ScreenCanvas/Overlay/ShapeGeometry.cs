@@ -24,6 +24,8 @@ public static class ShapeGeometry
             ShapeKind.Diamond => Polygon([
                 new Point(rect.Left + rect.Width / 2, rect.Top), new Point(rect.Right, rect.Top + rect.Height / 2),
                 new Point(rect.Left + rect.Width / 2, rect.Bottom), new Point(rect.Left, rect.Top + rect.Height / 2)]),
+            ShapeKind.Triangle => Polygon([
+                new Point(rect.Left + rect.Width / 2, rect.Top), new Point(rect.Right, rect.Bottom), new Point(rect.Left, rect.Bottom)]),
             _ => new RectangleGeometry(rect)
         };
     }
@@ -61,32 +63,5 @@ public static class ShapeGeometry
         var figure = new PathFigure { StartPoint = points[0], IsClosed = true, IsFilled = true };
         figure.Segments.Add(new PolyLineSegment(points.Skip(1), true));
         return new PathGeometry([figure]);
-    }
-
-    /// <summary>
-    /// Auto-shape assist: a nearly closed loop becomes an ellipse (roughly square bounds) or rectangle,
-    /// a nearly straight stroke becomes a line. Returns null when the stroke should stay freehand.
-    /// </summary>
-    public static (ShapeKind Kind, Point Start, Point End)? Recognize(IReadOnlyList<Point> points)
-    {
-        if (points.Count < 6) return null;
-        double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue, length = 0;
-        for (var i = 0; i < points.Count; i++)
-        {
-            var p = points[i];
-            minX = Math.Min(minX, p.X); maxX = Math.Max(maxX, p.X);
-            minY = Math.Min(minY, p.Y); maxY = Math.Max(maxY, p.Y);
-            if (i > 0) length += (p - points[i - 1]).Length;
-        }
-        var w = maxX - minX;
-        var h = maxY - minY;
-        var gap = (points[^1] - points[0]).Length;
-        if (gap < 40 && length > 80)
-        {
-            var square = Math.Abs(w - h) < Math.Max(w, h) * 0.45;
-            return (square ? ShapeKind.Ellipse : ShapeKind.Rectangle, new Point(minX, minY), new Point(maxX, maxY));
-        }
-        if (length > 40 && gap / length > 0.88) return (ShapeKind.Line, points[0], points[^1]);
-        return null;
     }
 }
