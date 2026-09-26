@@ -542,6 +542,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         "zoom" when IsZoomActive => (true, Tw.Indigo600, Colors.White, null),
         "focus" when _overlay.IsFocusBoxActive => (true, Tw.Amber500, Colors.White, null),
         "record" when IsRecording => (true, Tw.Red600, Colors.White, null),
+        "mirror" when IsMirroring => (true, Tw.Blue600, Colors.White, null),
         "board" when _overlay.CurrentBoard != BoardKind.Transparent => (true, Tw.Slate700, Colors.White, Tw.Blue400),
         "more" when _inspector?.CurrentCategory == "more" && IsPaletteOpen => (true, Tw.Slate700, Colors.White, null),
         _ => (false, Colors.Transparent, Colors.Transparent, null)
@@ -708,6 +709,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             case "capability": OpenCapabilityCentre(); break;
             case "capture": CaptureRegionWithPreview(); break;
             case "record": ToggleRecording(); break;
+            case "mirror": ToggleMirror(); break;
             case "focus": if (_overlay.IsFocusBoxActive) _overlay.HideFocusBox(); else FocusOnArea(); break;
             case "collapse": _collapsed = true; CloseMenus(); BuildStrip(); BuildFooter(); break;
         }
@@ -1292,6 +1294,43 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             ApplyFollowSlides();
             Toast.Show(value ? "Drawings now stay with each PowerPoint slide" : "Drawings no longer follow PowerPoint slides");
         }
+    }
+
+    // ------------------------------------------------------------------ Mirror to a second screen
+
+    private readonly Lazy<MirrorService> _mirror = new(() => new MirrorService());
+    public bool IsMirroring => _mirror.IsValueCreated && _mirror.Value.IsActive;
+
+    /// <summary>Show the screen, an area or one window on the projector / second monitor (or stop showing it).</summary>
+    public void ToggleMirror()
+    {
+        CloseMenus();
+        if (IsMirroring) { _mirror.Value.Stop(); Toast.Show("Stopped showing on the other screen"); RefreshItemStates(); return; }
+        if (MirrorService.TargetScreen() is null) { Toast.Show("Connect a projector or second screen first"); return; }
+        if (!_mirror.IsValueCreated) _mirror.Value.Changed += (_, _) => Dispatcher.BeginInvoke(RefreshItemStates);
+        Notice.Present("Cast", "Show on the other screen", "Pick what the audience sees. Your other windows and notes stay private on this screen.",
+        [
+            new NoticeAction("One window", MirrorOneWindow),
+            new NoticeAction("Choose area", () =>
+            {
+                if (_capture.SelectRegion(this, "Drag a box around what the audience should see   ·   Esc to cancel") is { } area) StartMirror(area);
+            }),
+            new NoticeAction("Whole screen", () => StartMirror(System.Windows.Forms.Screen.FromPoint(System.Windows.Forms.Cursor.Position).Bounds), Primary: true)
+        ]);
+    }
+
+    private void StartMirror(System.Drawing.Rectangle area)
+    {
+        _mirror.Value.MirrorArea(area);
+        Toast.Show("Showing on the other screen (with your drawings). Run Mirror again to stop.");
+    }
+
+    private void MirrorOneWindow()
+    {
+        var picked = WindowPicker.Pick("Click the window the audience should see   ·   Esc to cancel");
+        if (picked == nint.Zero) return;
+        _mirror.Value.MirrorWindow(picked);
+        Toast.Show("Showing that window on the other screen. Run Mirror again to stop.");
     }
 
     // ------------------------------------------------------------------ Lesson recording

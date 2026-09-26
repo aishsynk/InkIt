@@ -119,6 +119,8 @@ public sealed class CommandRegistry
             ["powerpoint", "slides", "slide show", "per slide", "keep drawings"], () => toolbar.FollowSlides = !toolbar.FollowSlides, () => toolbar.FollowSlides);
         Add("screen.record", "Record a Lesson", CapabilityCategory.Screen, "Record the screen or an area, with your drawings and voice, to an MP4 video", "Video", null,
             ["record", "video", "lesson", "mp4", "screen recording", "capture video"], toolbar.ToggleRecording, () => toolbar.IsRecording);
+        Add("screen.mirror", "Show on Second Screen", CapabilityCategory.Screen, "Show the screen, an area or one window on the projector while your notes stay private", "Cast", null,
+            ["mirror", "projector", "second screen", "extend", "cast", "duplicate"], toolbar.ToggleMirror, () => toolbar.IsMirroring);
         Add("present.focus_box", "Focus Box", CapabilityCategory.Present, "Drag a box: everything else is dimmed while your apps keep working", "Focus", null,
             ["focus", "dim", "highlight area", "box", "attention"], toolbar.FocusOnArea, () => overlay.IsFocusBoxActive);
         Add("present.break_timer", "Break Timer", CapabilityCategory.Present, "Small countdown clock for breaks", "Timer", "Ctrl+Shift+B",

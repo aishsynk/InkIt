@@ -43,6 +43,7 @@ public static class ToolbarCatalog
         new("zoom", ToolbarItemKind.Tool, "Zoom", "ZoomIn", "Ctrl+Shift+5", "Zoom (Ctrl+Shift+5) - drag a box around the part to enlarge; it stays put so you can draw on it", Group: GroupPresent),
         new("capture", ToolbarItemKind.Action, "Screenshot", "Camera", "Ctrl+Shift+4", "Screenshot (Ctrl+Shift+4) - drag a box to snap part of the screen; it is copied, ready to paste", Group: GroupPresent),
         new("record", ToolbarItemKind.Action, "Record", "Video", null, "Record a lesson - the screen (or an area), your drawings and your voice, saved as an MP4 video", Group: GroupPresent),
+        new("mirror", ToolbarItemKind.Action, "Mirror", "Cast", null, "Mirror - show this screen, an area or one window on the projector / second screen", false, GroupPresent),
         new("board", ToolbarItemKind.Inspector, "Whiteboard", "Presentation", null, "Whiteboard - draw on a whiteboard, blackboard or grid instead of the screen", Group: GroupPresent),
         // Edit - change what is already drawn.
         new("select", ToolbarItemKind.Tool, "Select", "SquareDashedMousePointer", "V", "Select (V) - drag a box around drawings to move, recolour or delete them", Group: GroupEdit),

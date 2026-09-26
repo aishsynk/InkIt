@@ -747,13 +747,19 @@ public partial class InspectorWindow : Window
             return b;
         }
         return DK.V(6,
-            Row("PauseCircle", "Freeze Frame Screen", "Pause the display and annotate over it", _owner.FreezeScreen, Tw.Sky400),
+            Row("Video", _owner.IsRecording ? "Stop Recording" : "Record a Lesson", "Screen, drawings and voice to an MP4 video", _owner.ToggleRecording, Tw.Red400),
+            Row("Cast", _owner.IsMirroring ? "Stop Second Screen" : "Show on Second Screen", "Projector sees the screen, an area or one window", _owner.ToggleMirror, Tw.Sky400),
+            Row("Focus", "Focus Box", "Dim everything except an area; apps keep working", _owner.FocusOnArea, Tw.Amber400),
+            Row("FileDown", "Export Pages as PDF", "Share your drawings as a handout", _owner.ExportPagesPdf, Tw.Blue400),
+            Row("FolderOpen", "Open Saved Drawings", "Reopen drawings prepared earlier (Ctrl+O)", _owner.OpenDrawings, Tw.Blue400),
+            Row("PauseCircle", "Freeze Screen", "Pause the display and draw over it", _owner.FreezeScreen, Tw.Sky400),
             Row("Timer", "Break Timer", $"Start a {_owner.BreakTimerMinutes}-minute countdown", () => _owner.StartBreakTimer(_owner.BreakTimerMinutes), Tw.Blue400),
-            Row("RotateCw", "Flip Toolbar Orientation", "Horizontal ⇄ vertical (Ctrl+Shift+O)", _owner.ToggleOrientation),
-            Row("PieChart", "Quick Radial Pie Menu", "Circular tool wheel at the cursor", _owner.OpenRadialMenu, Tw.Purple400),
-            Row("Search", "Command Palette", "Search every command (Ctrl+K)", _owner.OpenCommandPalette, Tw.Blue400),
-            Row("Compass", "Capability Centre", "Browse all capabilities (F10)", _owner.OpenCapabilityCentre, Tw.Purple400),
-            Row("Settings", "InkIt Settings", "Appearance, hotkeys, profiles (Ctrl+,)", _owner.OpenSettings),
+            Row("RotateCw", "Turn Toolbar", "Across or up-and-down (Ctrl+Shift+O)", _owner.ToggleOrientation),
+            Row("PieChart", "Tool Wheel", "Tools in a ring at the mouse (or right-click while drawing)", _owner.OpenRadialMenu, Tw.Purple400),
+            Row("Search", "Search", "Find any feature by typing (Ctrl+K)", _owner.OpenCommandPalette, Tw.Blue400),
+            Row("LayoutGrid", "All Features", "Browse everything InkIt can do (F10)", _owner.OpenCapabilityCentre, Tw.Purple400),
+            Row("Compass", "Quick Tour", "Five short tips for getting started", _owner.StartTour, Tw.Emerald400),
+            Row("Settings", "Settings", "Theme, shortcuts, start-up and feedback (Ctrl+,)", _owner.OpenSettings),
             Row("Power", "Exit InkIt", "Close all overlays and quit", _owner.ExitApplication, Tw.Red400, danger: true));
     }
 }
