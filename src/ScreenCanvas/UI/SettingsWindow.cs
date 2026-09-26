@@ -19,7 +19,7 @@ namespace ScreenCanvas.UI;
 /// <summary>InkIt Settings (820×620) - design: SettingsModal.tsx. Changes are saved as they are made.</summary>
 public sealed class SettingsWindow : ModalHost
 {
-    private enum Tab { Appearance, Toolbar, Hotkeys, Presentation, Profiles, Audit }
+    private enum Tab { Appearance, Toolbar, Hotkeys, Presentation, Profiles, Audit, About }
 
     private readonly AppSettings _settings;
     private readonly ISettingsStore _store;
@@ -84,7 +84,7 @@ public sealed class SettingsWindow : ModalHost
     private void Save() => _store.SaveAsync(_settings).GetAwaiter().GetResult();
 
     /// <summary>QA capture only: switches to the Hotkeys tab without input.</summary>
-    internal void ShowHotkeysTab() { _tab = Tab.Hotkeys; Render(); }
+    internal void ShowTab(string name) { _tab = Enum.Parse<Tab>(name); Render(); }
 
     private void Render()
     {
@@ -93,7 +93,7 @@ public sealed class SettingsWindow : ModalHost
                  {
                      (Tab.Appearance, "Appearance", "Palette"), (Tab.Toolbar, "Toolbar & Presets", "Layout"),
                      (Tab.Hotkeys, "Keyboard Shortcuts", "Keyboard"), (Tab.Presentation, "Spotlight & Focus", "Eye"),
-                     (Tab.Profiles, "Tool Memory", "Sliders"), (Tab.Audit, "Performance", "Cpu")
+                     (Tab.Profiles, "Tool Memory", "Sliders"), (Tab.Audit, "Performance", "Cpu"), (Tab.About, "About & Feedback", "Info")
                  })
         {
             var active = _tab == tab;
@@ -115,6 +115,7 @@ public sealed class SettingsWindow : ModalHost
             Tab.Hotkeys => Hotkeys(),
             Tab.Presentation => Presentation(),
             Tab.Profiles => Profiles(),
+            Tab.About => About(),
             _ => Audit()
         };
     }
@@ -296,6 +297,55 @@ public sealed class SettingsWindow : ModalHost
         Save();
         _hotkeysChanged?.Invoke(_settings.Hotkeys);
         Render();
+    }
+
+    private UIElement About()
+    {
+        Button Action(string icon, string label, Action run, bool primary = false)
+        {
+            var b = primary
+                ? DK.Button(DK.IconLabel(icon, 14, label, 12, spacing: 6), Tw.B(Tw.Blue600), Tw.B(Colors.White), Tw.B(Tw.Blue500), Tw.B(Colors.White), 8, new Thickness(12, 7, 12, 7))
+                : DK.Button(DK.IconLabel(icon, 14, label, 12, spacing: 6), "Ink.Control", "Ink.Text200", "Ink.ControlHover", "Ink.Text", 8, new Thickness(12, 7, 12, 7));
+            b.Click += (_, _) => run();
+            return b;
+        }
+        FrameworkElement SwitchRow(string title, string detail, bool value, Action<bool> changed)
+        {
+            var text = DK.V(0, DK.Text(title, 13, "Ink.Text", FontWeights.Medium), DK.Text(detail, 11, "Ink.Text400").Wrap());
+            text.Margin = new Thickness(0, 0, 16, 0);
+            var toggle = DK.Switch(value, changed, Tw.Blue500);
+            toggle.VerticalAlignment = VerticalAlignment.Center;
+            var row = new Grid { ColumnDefinitions = { new ColumnDefinition(), new ColumnDefinition { Width = GridLength.Auto } }, Margin = new Thickness(0, 6, 0, 6) };
+            row.Children.Add(text);
+            Grid.SetColumn(toggle, 1);
+            row.Children.Add(toggle);
+            return row;
+        }
+
+        var version = DK.V(2, DK.Text($"InkIt {AppInfo.Version}", 20, "Ink.Text", FontWeights.SemiBold),
+            DK.Text("Draw, highlight, zoom and screenshot on your screen.", 12, "Ink.Text400"));
+        var updates = DK.H(8,
+            Action("RotateCw", "Check for updates", () => _toolbar.CheckForUpdates(manual: true), primary: true),
+            Action("Info", "What's new", () => Support.Links.Open(Support.Links.Releases)));
+        updates.Margin = new Thickness(0, 12, 0, 0);
+        var autoUpdate = SwitchRow("Check for updates automatically",
+            "Once a day InkIt asks GitHub whether a newer version exists. Nothing else is sent.",
+            _settings.Advanced.CheckForUpdates, v => { _settings.Advanced.CheckForUpdates = v; Save(); });
+        var startup = SwitchRow("Start InkIt when I sign in to Windows",
+            "InkIt waits in the tray, ready for Ctrl+Shift+5 and the other shortcuts.",
+            Support.StartWithWindows.IsEnabled,
+            v => { if (!Support.StartWithWindows.TrySet(v)) Toast.Show("Windows did not allow that change"); });
+        var feedback = DK.H(8,
+            Action("Star", "Send feedback", _toolbar.SendFeedback, primary: true),
+            Action("AlertCircle", "Report a problem", _toolbar.ReportProblem),
+            Action("Folder", "Crash reports", Support.CrashLog.OpenFolder));
+        var tour = Action("Compass", "Show the quick tour", () => { Close(); _toolbar.StartTour(); });
+        tour.HorizontalAlignment = HorizontalAlignment.Left;
+        return DK.V(0,
+            Section("InkIt", null, version, updates),
+            Ruled(Section("Start-up", null, autoUpdate, startup)),
+            Ruled(Section("Feedback", DK.Text("Tell us what works and what to improve. The forms open in your browser with your version filled in.", 12, "Ink.Text400").Wrap(), feedback)),
+            Ruled(Section("Help", null, tour)));
     }
 
     private UIElement Presentation()

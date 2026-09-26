@@ -35,6 +35,14 @@ public interface IOverlayManager
     void ShowZoomArea(System.Windows.Media.ImageSource image, System.Drawing.Rectangle pixelBounds);
     void ExitZoomArea();
     void RequestZoomArea();
+    /// <summary>Raised when the focus box (dim everything except an area) appears or goes away.</summary>
+    event EventHandler? FocusBoxChanged;
+    bool IsFocusBoxActive { get; }
+    void ShowFocusBox(System.Drawing.Rectangle pixelBounds);
+    void HideFocusBox();
+    /// <summary>Raised on a right-click (or pen side button) while drawing: open the tool wheel at the mouse.</summary>
+    event EventHandler? ToolWheelRequested;
+    void RequestToolWheel();
     BoardKind CurrentBoard { get; }
     void SetBoardKind(BoardKind kind);
     /// <summary>Applies a change to the shared tool settings, refreshes overlays and (optionally) persists it.</summary>

@@ -101,6 +101,35 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
     public bool IsZoomAreaActive { get; private set; }
     public void RequestZoomArea() => ZoomAreaRequested?.Invoke(this, EventArgs.Empty);
 
+    public event EventHandler? FocusBoxChanged;
+    public bool IsFocusBoxActive { get; private set; }
+
+    public void ShowFocusBox(System.Drawing.Rectangle pixelBounds)
+    {
+        var center = new System.Drawing.Point(pixelBounds.Left + pixelBounds.Width / 2, pixelBounds.Top + pixelBounds.Height / 2);
+        var screen = System.Windows.Forms.Screen.FromPoint(center);
+        var display = new DisplayInfo(screen.DeviceName, screen.Bounds.Left, screen.Bounds.Top, screen.Bounds.Width, screen.Bounds.Height, screen.Primary);
+        EnsureOverlay(display);
+        foreach (var (name, window) in _windows)
+        {
+            if (name == display.DeviceName) window.ShowFocusBox(pixelBounds);
+            else window.HideFocusBox();
+        }
+        IsFocusBoxActive = true;
+        ApplyInputMode();
+        FocusBoxChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void HideFocusBox()
+    {
+        if (!IsFocusBoxActive) return;
+        IsFocusBoxActive = false;
+        foreach (var window in _windows.Values) window.HideFocusBox();
+        FocusBoxChanged?.Invoke(this, EventArgs.Empty);
+    }
+    public event EventHandler? ToolWheelRequested;
+    public void RequestToolWheel() => ToolWheelRequested?.Invoke(this, EventArgs.Empty);
+
     public void ShowZoomArea(System.Windows.Media.ImageSource image, System.Drawing.Rectangle pixelBounds)
     {
         var center = new System.Drawing.Point(pixelBounds.Left + pixelBounds.Width / 2, pixelBounds.Top + pixelBounds.Height / 2);
@@ -190,6 +219,7 @@ public sealed class OverlayManager : IOverlayManager, IDisposable
         if (reason is ToolDeactivationReason.Escape or ToolDeactivationReason.CursorSelected or ToolDeactivationReason.EmergencyRelease)
         {
             ExitZoomArea();
+            if (reason != ToolDeactivationReason.CursorSelected) HideFocusBox();
             if (CurrentBoard != BoardKind.Transparent)
             {
                 SetBoardKind(BoardKind.Transparent);

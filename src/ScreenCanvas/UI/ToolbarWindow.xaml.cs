@@ -174,6 +174,8 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         _overlay.PinchZoomRequested += (_, factor) => Dispatcher.BeginInvoke(() => SetZoomFactor(factor));
         _overlay.ZoomAreaChanged += (_, _) => Dispatcher.BeginInvoke(OnZoomAreaChanged);
         _overlay.ZoomAreaRequested += (_, _) => Dispatcher.BeginInvoke(ZoomToArea);
+        _overlay.FocusBoxChanged += (_, _) => Dispatcher.BeginInvoke(RefreshItemStates);
+        _overlay.ToolWheelRequested += (_, _) => Dispatcher.BeginInvoke(OpenRadialMenu);
         _presets.ActivePresetChanged += (_, _) => Dispatcher.BeginInvoke(ApplyActivePreset);
         ThemeManager.ThemeChanged += (_, _) => Dispatcher.BeginInvoke(() => { BuildStrip(); BuildFooter(); });
 
@@ -182,6 +184,14 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         {
             ApplyOrientation(_isHorizontal);
             SubscribeZoomEvents();
+        };
+        ContentRendered += (_, _) =>
+        {
+            if (!ShowStartupExtras) return;
+            // First run: a short tour. Every run: a quiet daily update check (if allowed) a little after start-up.
+            if (!_appSettings.Advanced.TourCompleted)
+                Delay(TimeSpan.FromSeconds(1.5), StartTour);
+            Delay(TimeSpan.FromSeconds(20), () => CheckForUpdates(manual: false));
         };
     }
 
@@ -281,6 +291,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         _inspector?.Reposition();
         _multiTool?.Reposition();
         _customize?.Reposition();
+        _notice?.Reposition();
     }
 
     // ------------------------------------------------------------------ Strip
@@ -528,6 +539,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         "laser" when s.Tool == ToolKind.Laser => (true, Tw.Red600, Colors.White, null),
         "spotlight" when s.Tool == ToolKind.Spotlight => (true, Tw.Amber500, Tw.Slate950, null),
         "zoom" when IsZoomActive => (true, Tw.Indigo600, Colors.White, null),
+        "focus" when _overlay.IsFocusBoxActive => (true, Tw.Amber500, Colors.White, null),
         "board" when _overlay.CurrentBoard != BoardKind.Transparent => (true, Tw.Slate700, Colors.White, Tw.Blue400),
         "more" when _inspector?.CurrentCategory == "more" && IsPaletteOpen => (true, Tw.Slate700, Colors.White, null),
         _ => (false, Colors.Transparent, Colors.Transparent, null)
@@ -680,7 +692,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             case "eraser": ToolClick(s.Tool == ToolKind.Eraser, null, false, () => _overlay.SetTool(ToolKind.Eraser)); break;
             case "shape": ToolClick(s.Tool == ToolKind.Shape, "shape", true, () => _overlay.SetShape(s.Shape)); break;
             case "text": ToolClick(s.Tool == ToolKind.Text, "text", false, () => _overlay.SetTool(ToolKind.Text)); break;
-            case "marker": ToolClick(s.Tool == ToolKind.NumberMarker, null, false, () => _overlay.SetTool(ToolKind.NumberMarker)); break;
+            case "marker": ToolClick(s.Tool == ToolKind.NumberMarker, "marker", true, () => _overlay.SetTool(ToolKind.NumberMarker)); break;
             case "laser": ToolClick(s.Tool == ToolKind.Laser, "laser", false, () => _overlay.SetTool(ToolKind.Laser)); break;
             case "spotlight": ToolClick(s.Tool == ToolKind.Spotlight, "spotlight", false, () => _overlay.SetTool(ToolKind.Spotlight)); break;
             case "zoom": ToolClick(IsZoomActive, "zoom", false, StartZoom); break;
@@ -693,6 +705,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             case "palette": OpenCommandPalette(); break;
             case "capability": OpenCapabilityCentre(); break;
             case "capture": CaptureRegionWithPreview(); break;
+            case "focus": if (_overlay.IsFocusBoxActive) _overlay.HideFocusBox(); else FocusOnArea(); break;
             case "collapse": _collapsed = true; CloseMenus(); BuildStrip(); BuildFooter(); break;
         }
     }
@@ -1058,6 +1071,17 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
     public void ToggleCodeFocus() =>
         _codeFocus.Value.Toggle(_overlay.Settings.CodeFocusBandHeight, _overlay.Settings.CodeFocusDimOpacity);
 
+    /// <summary>Focus box: drag a box; everything else is dimmed while the apps underneath keep working.</summary>
+    public void FocusOnArea()
+    {
+        CloseMenus();
+        _overlay.HideFocusBox();
+        if (_capture.SelectRegion(this, "Drag a box around the part to keep bright   ·   Esc to cancel") is not { } area) return;
+        _overlay.ShowFocusBox(area);
+        Toast.Show("Focus box on - your apps still work. Press Esc to remove it.");
+        RefreshItemStates();
+    }
+
     public void CaptureRegionWithPreview()
     {
         CloseMenus();
@@ -1073,6 +1097,83 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         var bitmap = _capture.Capture(new CaptureRequest(CaptureTarget.VirtualDesktop));
         var preview = new CapturePreviewWindow(bitmap, _capture) { Owner = this };
         preview.ShowDialog();
+    }
+
+    // ------------------------------------------------------------------ Feedback, updates, tour
+
+    private NoticeCard? _notice;
+    private NoticeCard Notice => _notice ??= new NoticeCard(this);
+
+    /// <summary>Off for QA/automation runs (--qa-capture).</summary>
+    public bool ShowStartupExtras { get; set; } = true;
+
+    private void Delay(TimeSpan delay, Action action)
+    {
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = delay };
+        timer.Tick += (_, _) => { timer.Stop(); action(); };
+        timer.Start();
+    }
+
+    public void SendFeedback() => Support.Links.Open(Support.Links.Review);
+    public void ReportProblem() => Support.Links.Open(Support.Links.Problem);
+
+    /// <summary>Looks for a newer release. Automatic checks run at most once a day and only when allowed in Settings.</summary>
+    public async void CheckForUpdates(bool manual)
+    {
+        var advanced = _appSettings.Advanced;
+        if (!manual)
+        {
+            if (!advanced.CheckForUpdates) return;
+            if (advanced.LastUpdateCheckUtc is { } last && DateTime.UtcNow - last < TimeSpan.FromHours(24)) return;
+        }
+        advanced.LastUpdateCheckUtc = DateTime.UtcNow;
+        SaveSettings();
+        var update = await Support.UpdateChecker.CheckAsync();
+        if (update is null)
+        {
+            if (manual) Toast.Show($"You have the latest version ({AppInfo.Version})");
+            return;
+        }
+        Notice.Present("Download", $"InkIt {update.Version} is available",
+            $"You have {AppInfo.Version}. Download the new installer and run it; your settings are kept.",
+            [
+                new NoticeAction("What's new", () => Support.Links.Open(update.PageUrl)),
+                new NoticeAction("Download", () => Support.Links.Open(Support.Links.LatestInstaller), Primary: true)
+            ]);
+    }
+
+    private static readonly (string Id, string Icon, string Title, string Message)[] TourSteps =
+    [
+        ("pen", "PenLine", "Draw on anything", "Click the pen (or press P) and draw over any app. Keys 1-6 change the colour; rough circles and arrows turn into clean shapes."),
+        ("cursor", "MousePointer2", "Back to normal", "Press Esc or click the pointer to use your apps again. Your drawings stay until you clear them."),
+        ("zoom", "ZoomIn", "Zoom into an area", "Press Ctrl+Shift+5 and drag a box. That part fills the screen and stays put while you explain it."),
+        ("capture", "Camera", "Screenshot and paste", "Press Ctrl+Shift+4 and drag a box. The picture is copied, ready to paste into Teams, PowerPoint or email."),
+        ("palette", "Search", "Find anything", "Press Ctrl+K and type what you want. While drawing, right-click to open the tool wheel."),
+    ];
+
+    /// <summary>Five short cards pointing at the buttons people need first.</summary>
+    public void StartTour() => ShowTourStep(0);
+
+    private void ShowTourStep(int index)
+    {
+        CloseMenus();
+        if (index >= TourSteps.Length) { FinishTour(); return; }
+        var (id, icon, title, message) = TourSteps[index];
+        _toolButtons.TryGetValue(id, out var anchor);
+        var last = index == TourSteps.Length - 1;
+        Notice.Present(icon, title, message,
+            last
+                ? [new NoticeAction("Done", FinishTour, Primary: true)]
+                : [new NoticeAction("Skip tour", FinishTour), new NoticeAction("Next", () => ShowTourStep(index + 1), Primary: true)],
+            anchor, $"{index + 1} of {TourSteps.Length}", FinishTour);
+    }
+
+    private void FinishTour()
+    {
+        if (_notice?.IsVisible == true && _notice.Step is not null) _notice.Hide();
+        if (_appSettings.Advanced.TourCompleted) return;
+        _appSettings.Advanced.TourCompleted = true;
+        SaveSettings();
     }
 
     public void ExitApplication()
@@ -1147,6 +1248,7 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
         var ctrl = modifiers.HasFlag(ModifierKeys.Control);
         var shift = modifiers.HasFlag(ModifierKeys.Shift);
         var alt = modifiers.HasFlag(ModifierKeys.Alt);
+        if (modifiers == ModifierKeys.None && HandleQuickStyleKey(key)) return true;
         string? command = (ctrl, shift, alt, key) switch
         {
             (true, true, false, Key.P) or (true, false, false, Key.K) => "tools.command_palette",
@@ -1188,12 +1290,43 @@ public partial class ToolbarWindow : Window, IUiExclusionRegionService
             (false, true, false, Key.D) => "shape.diamond",
             (false, false, false, Key.F) => "shape.fill_toggle",
             (false, false, false, Key.M) => "present.spotlight",
-            (false, false, false, Key.D1) => "annot.marker",
             _ => null
         };
         if (command is null || _registry.Find(command) is not { } item) return false;
         item.Execute();
         return true;
+    }
+
+    /// <summary>
+    /// While drawing: 1-6 pick the six teaching colours, [ and ] make the stroke thinner or thicker.
+    /// </summary>
+    private bool HandleQuickStyleKey(Key key)
+    {
+        var s = _overlay.Settings;
+        if (s.Tool is ToolKind.Cursor or ToolKind.Select or ToolKind.Eraser or ToolKind.Laser or ToolKind.Spotlight) return false;
+        var colourIndex = key switch
+        {
+            >= Key.D1 and <= Key.D6 => key - Key.D1,
+            >= Key.NumPad1 and <= Key.NumPad6 => key - Key.NumPad1,
+            _ => -1
+        };
+        if (colourIndex >= 0)
+        {
+            var (name, hex) = InspectorWindow.TeachingColors[colourIndex];
+            _overlay.SetColor(Tw.Hex(hex));
+            Toast.Show($"Colour: {name}");
+            RefreshItemStates();
+            return true;
+        }
+        if (key is Key.OemOpenBrackets or Key.OemCloseBrackets)
+        {
+            var step = s.Thickness >= 10 ? 2 : 1;
+            var thickness = Math.Clamp(s.Thickness + (key == Key.OemCloseBrackets ? step : -step), 1, 60);
+            _overlay.SetThickness(thickness);
+            Toast.Show($"Thickness: {thickness:0} px");
+            return true;
+        }
+        return false;
     }
 }
 

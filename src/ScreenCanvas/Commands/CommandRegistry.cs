@@ -115,6 +115,8 @@ public sealed class CommandRegistry
             ["laser", "pointer", "red dot", "tail", "presenter"], () => overlay.SetTool(ToolKind.Laser), () => s.Tool == ToolKind.Laser);
         Add("present.spotlight", "Spotlight", CapabilityCategory.Present, "Darken the whole screen except a circle around the mouse", "SunMedium", "Ctrl+Shift+S",
             ["spotlight", "dim", "aperture", "focus light"], () => overlay.SetTool(ToolKind.Spotlight), () => s.Tool == ToolKind.Spotlight);
+        Add("present.focus_box", "Focus Box", CapabilityCategory.Present, "Drag a box: everything else is dimmed while your apps keep working", "Focus", null,
+            ["focus", "dim", "highlight area", "box", "attention"], toolbar.FocusOnArea, () => overlay.IsFocusBoxActive);
         Add("present.break_timer", "Break Timer", CapabilityCategory.Present, "Small countdown clock for breaks", "Timer", "Ctrl+Shift+B",
             ["timer", "break", "countdown", "clock"], () => toolbar.StartBreakTimer(toolbar.BreakTimerMinutes), () => ctx.BreakTimer.IsValueCreated && ctx.BreakTimer.Value.IsRunning);
         Add("present.key_visualizer", "Show Keys Pressed", CapabilityCategory.Present, "Show the keyboard shortcuts you press on screen, so learners can follow", "Keyboard", "Ctrl+Shift+K",
@@ -231,6 +233,14 @@ public sealed class CommandRegistry
                     Toast.Show("Recognised text copied to clipboard");
                 }
             });
+        Add("tools.feedback", "Send Feedback", CapabilityCategory.Tools, "Tell us what works and what to improve (opens the review form)", "Star", null,
+            ["feedback", "review", "suggest", "rate"], toolbar.SendFeedback);
+        Add("tools.report_problem", "Report a Problem", CapabilityCategory.Tools, "Something did not work? Send a problem report", "AlertCircle", null,
+            ["bug", "problem", "issue", "crash", "report"], toolbar.ReportProblem);
+        Add("tools.check_updates", "Check for Updates", CapabilityCategory.Tools, "See whether a newer InkIt is available", "RotateCw", null,
+            ["update", "upgrade", "new version", "download"], () => toolbar.CheckForUpdates(manual: true));
+        Add("tools.tour", "Quick Tour", CapabilityCategory.Tools, "A 5-step tour of the buttons you need first", "Compass", null,
+            ["tour", "help", "tutorial", "getting started", "how to"], toolbar.StartTour);
         Add("tools.exit", "Exit InkIt", CapabilityCategory.Tools, "Close every overlay and quit InkIt", "Power", null,
             ["exit", "quit", "close"], toolbar.ExitApplication);
 

@@ -182,6 +182,7 @@ public partial class InspectorWindow : Window
             "grid" => "GRID & ALIGNMENT",
             "highlighter" => "HIGHLIGHTER",
             "text" => "TEXT ANNOTATION",
+            "marker" => "STEP NUMBERS & STAMPS",
             "more" => "MORE TOOLS",
             _ => string.Empty
         };
@@ -197,6 +198,7 @@ public partial class InspectorWindow : Window
             "grid" => BuildGrid(s),
             "highlighter" => BuildHighlighter(s),
             "text" => BuildText(s),
+            "marker" => BuildMarker(s),
             "more" => BuildMore(),
             _ => null
         };
@@ -424,12 +426,23 @@ public partial class InspectorWindow : Window
         }).ToList();
         var timer = DK.TopRule(DK.V(6, DK.Text("Start Break Timer", 12, "Ink.Text400"), DK.Columns(3, 6, timers)));
 
-        var demo = DK.Button(DK.IconLabel("Terminal", 14, "Type Code Snippet", 12, FontWeights.Medium),
-            Tw.Blue600, Tw.B(System.Windows.Media.Colors.White), Tw.Blue500, Tw.B(System.Windows.Media.Colors.White), 8, new Thickness(0, 6, 0, 6));
-        demo.Click += (_, _) => _owner.RunDemoType("// Live Demo Script\nconst canvas = new OverlayCanvas();\ncanvas.enableHardwareAcceleration();\nconsole.log(\"Zero-NuGet verified!\");");
-        var demoBlock = DK.TopRule(DK.V(6, DK.Text("DemoType Simulator", 12, "Ink.Text400"), demo));
+        var demo = DK.Button(DK.IconLabel("Terminal", 14, "Type my copied text", 12, FontWeights.Medium),
+            "Ink.Control", "Ink.Text200", "Ink.ControlHover", "Ink.Text", 8, new Thickness(0, 6, 0, 6));
+        demo.ToolTip = "Copy some text or code first, then click here: InkIt types it into your app as if you were typing live";
+        demo.Click += (_, _) =>
+        {
+            var text = System.Windows.Clipboard.ContainsText() ? System.Windows.Clipboard.GetText() : string.Empty;
+            if (string.IsNullOrWhiteSpace(text)) { UI.Toast.Show("Copy some text first, then try again"); return; }
+            _owner.RunDemoType(text);
+        };
+        var demoBlock = DK.TopRule(DK.V(6, DK.Text("Live typing demo", 12, "Ink.Text400"), demo));
 
-        return DK.V(12, radius, slit, curtain, timer, demoBlock);
+        var focus = DK.Button(DK.IconLabel("Focus", 14, "Focus box: dim all but an area", 12, FontWeights.Medium),
+            Tw.Amber500, Tw.B(System.Windows.Media.Colors.White), Tw.Amber400, Tw.B(System.Windows.Media.Colors.White), 8, new Thickness(0, 7, 0, 7));
+        focus.ToolTip = "Drag a box; everything else is dimmed while the apps keep working. Esc removes it.";
+        focus.Click += (_, _) => _owner.FocusOnArea();
+
+        return DK.V(12, focus, radius, slit, curtain, timer, demoBlock);
     }
 
     // ---- Zoom ------------------------------------------------------------------
@@ -619,8 +632,70 @@ public partial class InspectorWindow : Window
             b.Click += (_, _) => { s.FontSize = size; Rebuild(); };
             return (UIElement)b;
         }).ToList());
+        var noteText = DK.V(0, DK.Text("Sticky note", 12, "Ink.Text300"), DK.Text("Write on a yellow note card that stays readable on any background.", 10, "Ink.Text400").Wrap());
+        noteText.Margin = new Thickness(0, 0, 12, 0);
+        var noteSwitch = DK.Switch(s.TextNote, v => s.TextNote = v, Tw.Amber500);
+        noteSwitch.VerticalAlignment = VerticalAlignment.Top;
+        var note = new Grid { ColumnDefinitions = { new ColumnDefinition(), new ColumnDefinition { Width = GridLength.Auto } } };
+        note.Children.Add(noteText);
+        Grid.SetColumn(noteSwitch, 1);
+        note.Children.Add(noteSwitch);
         var hint = DK.Text("Click anywhere on screen to type. Enter commits, Shift+Enter adds a line, Esc cancels.", 11, "Ink.Text400").Wrap();
-        return DK.V(12, DK.V(6, DK.Text("Text Style", 12, "Ink.Text400"), style), DK.V(6, DK.Text("Font Size", 12, "Ink.Text400"), sizes), DK.TopRule(hint));
+        return DK.V(12, DK.V(6, DK.Text("Text Style", 12, "Ink.Text400"), style), DK.V(6, DK.Text("Font Size", 12, "Ink.Text400"), sizes), note, DK.TopRule(hint));
+    }
+
+    // ---- Step numbers & stamps ----------------------------------------------------------
+
+    private UIElement BuildMarker(ToolSettings s)
+    {
+        Button Choice(UIElement content, bool selected, string tip, Action pick)
+        {
+            var b = selected
+                ? DK.Button(content, Tw.Blue600, Tw.B(System.Windows.Media.Colors.White), Tw.Blue600, Tw.B(System.Windows.Media.Colors.White), 8, new Thickness(0, 6, 0, 6))
+                : DK.Button(content, "Ink.Raised", "Ink.Text200", "Ink.Hover", "Ink.Text", 8, new Thickness(0, 6, 0, 6));
+            b.ToolTip = tip;
+            b.Click += (_, _) => { pick(); Rebuild(); };
+            return b;
+        }
+        UIElement Label(string text) => DK.Plain(text, 13, FontWeights.Bold, center: true);
+
+        var numbering = DK.Columns(2, 6, new UIElement[]
+        {
+            Choice(Label("1  2  3"), s.Stamp == StampKind.None && !s.LetterMarkers, "Numbered badges", () => { s.Stamp = StampKind.None; s.LetterMarkers = false; }),
+            Choice(Label("A  B  C"), s.Stamp == StampKind.None && s.LetterMarkers, "Lettered badges", () => { s.Stamp = StampKind.None; s.LetterMarkers = true; }),
+        });
+        var stamps = DK.Columns(5, 6, new[]
+        {
+            (StampKind.Check, "Correct / done"), (StampKind.Cross, "Wrong / remove"), (StampKind.Question, "Question / unclear"),
+            (StampKind.Important, "Important"), (StampKind.Star, "Highlight / favourite")
+        }.Select(x =>
+        {
+            var (glyph, color) = Overlay.OverlayWindow.StampStyle(x.Item1);
+            var dot = new Border
+            {
+                Width = 24, Height = 24, CornerRadius = new CornerRadius(12), Background = new System.Windows.Media.SolidColorBrush(color),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Child = new TextBlock { Text = glyph, Foreground = System.Windows.Media.Brushes.White, FontWeight = FontWeights.Bold, FontSize = 13,
+                    FontFamily = new System.Windows.Media.FontFamily("Segoe UI Symbol, Segoe UI"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center }
+            };
+            return (UIElement)Choice(dot, s.Stamp == x.Item1, x.Item2, () => s.Stamp = x.Item1);
+        }).ToList());
+        var shape = DK.Columns(2, 6, new UIElement[]
+        {
+            Choice(DK.Plain("Round", 12, FontWeights.Medium, center: true), !s.SquareMarkers, "Round badges", () => s.SquareMarkers = false),
+            Choice(DK.Plain("Square", 12, FontWeights.Medium, center: true), s.SquareMarkers, "Square badges", () => s.SquareMarkers = true),
+        });
+        var next = s.LetterMarkers ? ((char)('A' + Math.Max(0, s.MarkerNumber - 1) % 26)).ToString() : Math.Max(1, s.MarkerNumber).ToString();
+        var restart = DK.Button(DK.IconLabel("RotateCcw", 13, $"Start again at {(s.LetterMarkers ? "A" : "1")}  (next: {next})", 12, spacing: 6),
+            "Ink.Control", "Ink.Text200", "Ink.ControlHover", "Ink.Text", 8, new Thickness(10, 6, 10, 6));
+        restart.HorizontalContentAlignment = HorizontalAlignment.Center;
+        restart.Click += (_, _) => { _overlay.ResetMarkerSequence(); Rebuild(); };
+        var hint = DK.Text("Click anywhere on the screen to place one.", 11, "Ink.Text400").Wrap();
+        return DK.V(12,
+            DK.V(6, DK.Text("Numbers", 12, "Ink.Text400"), numbering, restart),
+            DK.V(6, DK.Text("Stamps", 12, "Ink.Text400"), stamps),
+            DK.V(6, DK.Text("Badge shape", 12, "Ink.Text400"), shape),
+            DK.TopRule(hint));
     }
 
     // ---- More (InkIt extra) ---------------------------------------------------------

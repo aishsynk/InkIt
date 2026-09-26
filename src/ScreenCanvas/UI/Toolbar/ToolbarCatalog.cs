@@ -35,10 +35,11 @@ public static class ToolbarCatalog
         // Add - things you place on the screen.
         new("shape", ToolbarItemKind.Tool, "Shapes", "Shapes", "S", "Shapes (S) - arrows, lines, boxes, circles and diamonds", Group: GroupAdd),
         new("text", ToolbarItemKind.Tool, "Text", "Type", "T", "Text (T) - click anywhere and type a note", Group: GroupAdd),
-        new("marker", ToolbarItemKind.Tool, "Step Numbers", "ListOrdered", "N", "Step numbers (N) - click to place 1, 2, 3 badges in order", Group: GroupAdd),
+        new("marker", ToolbarItemKind.Tool, "Step Numbers", "ListOrdered", "N", "Step numbers & stamps (N) - place 1, 2, 3 badges or tick, cross, ? and ! stamps", Group: GroupAdd),
         // Present - guide the audience's eyes.
         new("laser", ToolbarItemKind.Tool, "Laser", "CircleDot", "Ctrl+Shift+L", "Laser pointer (Ctrl+Shift+L) - a glowing dot with a fading trail", Group: GroupPresent),
         new("spotlight", ToolbarItemKind.Tool, "Spotlight", "Flashlight", "Ctrl+Shift+S", "Spotlight (Ctrl+Shift+S) - darken the screen except around the mouse", Group: GroupPresent),
+        new("focus", ToolbarItemKind.Action, "Focus Box", "Focus", null, "Focus box - drag a box; everything else is dimmed while your apps keep working (Esc removes it)", false, GroupPresent),
         new("zoom", ToolbarItemKind.Tool, "Zoom", "ZoomIn", "Ctrl+Shift+5", "Zoom (Ctrl+Shift+5) - drag a box around the part to enlarge; it stays put so you can draw on it", Group: GroupPresent),
         new("capture", ToolbarItemKind.Action, "Screenshot", "Camera", "Ctrl+Shift+4", "Screenshot (Ctrl+Shift+4) - drag a box to snap part of the screen; it is copied, ready to paste", Group: GroupPresent),
         new("board", ToolbarItemKind.Inspector, "Whiteboard", "Presentation", null, "Whiteboard - draw on a whiteboard, blackboard or grid instead of the screen", Group: GroupPresent),

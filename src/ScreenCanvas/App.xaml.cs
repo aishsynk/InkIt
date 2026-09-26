@@ -18,6 +18,15 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        // Unexpected errors: keep InkIt running where possible and save a report the user can attach to a bug report.
+        DispatcherUnhandledException += (_, ex) =>
+        {
+            Support.CrashLog.Write(ex.Exception, "UI");
+            ex.Handled = true;
+            Toast.Show("Something went wrong. InkIt saved a report (tray menu > Report a problem).");
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, ex) => { if (ex.ExceptionObject is Exception error) Support.CrashLog.Write(error, "Process"); };
+        TaskScheduler.UnobservedTaskException += (_, ex) => { Support.CrashLog.Write(ex.Exception, "Background task"); ex.SetObserved(); };
         // Developer switches: --settings <file> isolates settings, --no-global-hotkeys skips RegisterHotKey
         // (used for QA while another InkIt instance owns the shortcuts); --qa-capture implies both.
         var args = e.Args;
@@ -33,7 +42,7 @@ public partial class App : System.Windows.Application
         if (migrated) settingsStore.SaveAsync(startupSettings).GetAwaiter().GetResult();
         ThemeManager.Initialize(startupSettings.Appearance.Theme);
         _overlays = new OverlayManager(startupSettings, settingsStore);
-        _toolbar = new ToolbarWindow(_overlays, startupSettings, settingsStore);
+        _toolbar = new ToolbarWindow(_overlays, startupSettings, settingsStore) { ShowStartupExtras = !qaCapture && !args.Contains("--no-global-hotkeys") };
         MainWindow = _toolbar;
         ToolTipService.SetIsEnabled(_toolbar, startupSettings.Toolbar.ShowTooltips);
         _hotkeys = new HotkeyManager(_toolbar);
@@ -51,6 +60,7 @@ public partial class App : System.Windows.Application
         _overlays.ToolChanged += (_, _) => UpdateEscapeState();
         _overlays.BoardChanged += (_, _) => UpdateEscapeState();
         _overlays.ZoomAreaChanged += (_, _) => UpdateEscapeState();
+        _overlays.FocusBoxChanged += (_, _) => UpdateEscapeState();
         _overlays.OptionsChanged += (_, _) => UpdateEscapeState();
         _toolbar.TemporaryModeChanged += (_, active) => { _temporaryModeActive = active; UpdateEscapeState(); };
         _toolbar.PaletteStateChanged += (_, _) => UpdateEscapeState();
@@ -60,13 +70,19 @@ public partial class App : System.Windows.Application
             showToolbar: () => ShowToolbar(),
             annotate: () => _overlays.ToggleDrawing(),
             clear: () => _overlays.Clear(),
-            exit: () => Shutdown());
+            exit: () => Shutdown(),
+            extras:
+            [
+                ("Quick tour", () => { ShowToolbar(); _toolbar.StartTour(); }),
+                ("Send feedback", _toolbar.SendFeedback),
+                ("Report a problem", _toolbar.ReportProblem),
+                ("Check for updates", () => _toolbar.CheckForUpdates(manual: true)),
+            ]);
 
         _toolbar.Show();
         if (_hotkeys.Unavailable.Count > 0)
             Toast.Show("Another app already uses this shortcut: " + string.Join(", ", _hotkeys.Unavailable));
-        else if (migrated && !qaCapture)
-            Toast.Show("Welcome to InkIt! Hover over any button to see what it does. Esc stops drawing, Ctrl+Shift+5 zooms, Ctrl+Shift+4 takes a screenshot.");
+
 
         if (qaCapture) RunQaCapture(_toolbar);
     }
@@ -98,7 +114,7 @@ public partial class App : System.Windows.Application
             toolbar.ApplyOrientation(false);
             Save(toolbar, "qa_toolbar_vertical.png");
             toolbar.ApplyOrientation(true);
-            foreach (var key in new[] { "pen", "shape", "color", "laser", "zoom", "board", "grid", "highlighter", "text", "more" })
+            foreach (var key in new[] { "pen", "shape", "color", "laser", "zoom", "board", "grid", "highlighter", "text", "more", "marker" })
             {
                 toolbar.ShowInspector(key);
                 if (toolbar.OwnedWindows.OfType<InspectorWindow>().FirstOrDefault() is { } inspector)
@@ -114,10 +130,10 @@ public partial class App : System.Windows.Application
                 ThemeManager.SetPreference(theme);
                 var settings = toolbar.CreateSettingsWindow();
                 settings.Show();
-                settings.ShowHotkeysTab();
+                settings.ShowTab(theme == AppTheme.Dark ? "About" : "Hotkeys");
                 settings.BeginAnimation(UIElement.OpacityProperty, null);
                 settings.Opacity = 1;
-                Save(settings, $"qa_settings_hotkeys_{theme.ToString().ToLowerInvariant()}.png");
+                Save(settings, theme == AppTheme.Dark ? "qa_settings_about_dark.png" : "qa_settings_hotkeys_light.png");
                 settings.Close();
             }
             Shutdown();
@@ -151,7 +167,7 @@ public partial class App : System.Windows.Application
             || _overlays?.CurrentBoardColor != null
             || _overlays?.Settings.CurtainProgress > 0
             || _toolbar?.IsPaletteOpen == true
-            || _toolbar?.IsZoomActive == true;
+            || _toolbar?.IsZoomActive == true || _overlays?.IsFocusBoxActive == true;
 
         _hotkeys?.SetEscapeEnabled(shouldEnable);
     }

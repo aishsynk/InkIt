@@ -101,6 +101,11 @@ public sealed class AdvancedSettings
     public bool DiagnosticLogging { get; set; }
     /// <summary>Event-driven overlay monitoring (slower display polling) to keep idle CPU at zero.</summary>
     public bool IdleCpuOptimized { get; set; } = true;
+    /// <summary>Look for a newer InkIt on GitHub at most once a day (the only network request InkIt makes).</summary>
+    public bool CheckForUpdates { get; set; } = true;
+    public DateTime? LastUpdateCheckUtc { get; set; }
+    /// <summary>The first-run tour has been finished or skipped.</summary>
+    public bool TourCompleted { get; set; }
 }
 
 public sealed class PresentationSettings

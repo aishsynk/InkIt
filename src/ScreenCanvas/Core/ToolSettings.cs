@@ -34,6 +34,10 @@ public sealed class ToolSettings
     public int MarkerNumber { get; set; } = 1;
     public bool LetterMarkers { get; set; }
     public bool SquareMarkers { get; set; }
+    /// <summary>Step numbers tool: place a stamp (tick, cross, ...) instead of a number.</summary>
+    public StampKind Stamp { get; set; }
+    /// <summary>Text tool: write on a sticky-note callout instead of plain text.</summary>
+    public bool TextNote { get; set; }
     public double MarkerSize { get; set; } = 34;
     public TimeSpan? FadeDuration { get; set; }
     public bool ShapeFillEnabled { get; set; }

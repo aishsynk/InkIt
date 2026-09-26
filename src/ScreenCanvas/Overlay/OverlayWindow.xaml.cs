@@ -72,6 +72,13 @@ public partial class OverlayWindow : Window
             _removed.Clear();
         };
         MouseMove += OnMouseMove;
+        // Right-click (or the pen's side button) while drawing opens the tool wheel right where the pointer is.
+        InputRoot.PreviewMouseRightButtonUp += (_, e) =>
+        {
+            if (_settings.Tool == ToolKind.Cursor || _textEditor is not null) return;
+            e.Handled = true;
+            _manager?.RequestToolWheel();
+        };
         MouseLeave += (_, _) => HidePointerEffects();
         PreviewKeyDown += OverlayWindow_OnPreviewKeyDown;
         SizeChanged += (_, _) => { RefreshOptions(); PlaceStatusPill(); };
@@ -140,7 +147,7 @@ public partial class OverlayWindow : Window
     }
 
     private bool HasVisibleContent =>
-        _board != BoardKind.Transparent || IsZoomViewActive || _settings.CurtainProgress > 0 || InkSurface.Strokes.Count > 0 ||
+        _board != BoardKind.Transparent || IsZoomViewActive || IsFocusBoxActive || _settings.CurtainProgress > 0 || InkSurface.Strokes.Count > 0 ||
         ShapeSurface.Children.Count > 0;
 
     public void RefreshTool()
@@ -578,6 +585,7 @@ public partial class OverlayWindow : Window
 
     private void AddMarker(Point point)
     {
+        if (_settings.Stamp != StampKind.None) { AddStamp(point); return; }
         if (_settings.MarkerNumber < 1) _settings.MarkerNumber = 1;
         var label = _settings.LetterMarkers ? MarkerLetter(_settings.MarkerNumber++) : (_settings.MarkerNumber++).ToString();
         // Design: 28px badge in the tool colour, 2px white ring, soft shadow, bold white label.
@@ -607,6 +615,47 @@ public partial class OverlayWindow : Window
         Canvas.SetTop(border, point.Y - size / 2);
         ShapeSurface.Children.Add(border);
         CommitAnnotation(border);
+    }
+
+    /// <summary>Stamp glyphs and their fixed colours (a tick is always green, a cross always red).</summary>
+    public static (string Glyph, Color Color) StampStyle(StampKind kind) => kind switch
+    {
+        StampKind.Check => ("\u2713", Color.FromRgb(0x16, 0xA3, 0x4A)),
+        StampKind.Cross => ("\u2717", Color.FromRgb(0xDC, 0x26, 0x26)),
+        StampKind.Question => ("?", Color.FromRgb(0xD9, 0x77, 0x06)),
+        StampKind.Important => ("!", Color.FromRgb(0xEA, 0x58, 0x0C)),
+        _ => ("\u2605", Color.FromRgb(0xCA, 0x8A, 0x04))
+    };
+
+    private void AddStamp(Point point)
+    {
+        var (glyph, color) = StampStyle(_settings.Stamp);
+        const double size = 34;
+        var stamp = new Border
+        {
+            Width = size,
+            Height = size,
+            CornerRadius = new CornerRadius(_settings.SquareMarkers ? 8 : size / 2),
+            Background = new SolidColorBrush(color),
+            BorderBrush = Brushes.White,
+            BorderThickness = new Thickness(2),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 6, ShadowDepth = 0, Opacity = 0.5, Color = Colors.Black },
+            Child = new TextBlock
+            {
+                Text = glyph,
+                Foreground = Brushes.White,
+                FontWeight = FontWeights.Bold,
+                FontSize = 18,
+                FontFamily = new System.Windows.Media.FontFamily("Segoe UI Symbol, Segoe UI"),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                VerticalAlignment = System.Windows.VerticalAlignment.Center
+            },
+            IsHitTestVisible = false
+        };
+        Canvas.SetLeft(stamp, point.X - size / 2);
+        Canvas.SetTop(stamp, point.Y - size / 2);
+        ShapeSurface.Children.Add(stamp);
+        CommitAnnotation(stamp);
     }
 
     private static string MarkerLetter(int value)
@@ -741,10 +790,31 @@ public partial class OverlayWindow : Window
                 IsHitTestVisible = false,
                 Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 4, ShadowDepth = 0, Opacity = 0.6, Color = Colors.Black }
             };
-            Canvas.SetLeft(textBlock, origin.X);
-            Canvas.SetTop(textBlock, origin.Y - _settings.FontSize * 0.2);
-            ShapeSurface.Children.Add(textBlock);
-            CommitAnnotation(textBlock);
+            UIElement committed = textBlock;
+            if (_settings.TextNote)
+            {
+                // Sticky-note callout: dark text on a warm note card, readable on any background.
+                textBlock.Foreground = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x37));
+                textBlock.Effect = null;
+                textBlock.MaxWidth = 360;
+                textBlock.TextWrapping = TextWrapping.Wrap;
+                committed = new Border
+                {
+                    Child = textBlock,
+                    Background = new SolidColorBrush(Color.FromRgb(0xFE, 0xF3, 0xC7)),
+                    BorderBrush = new SolidColorBrush(_settings.Color),
+                    BorderThickness = new Thickness(0, 0, 0, 0),
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(10, 8, 10, 8),
+                    IsHitTestVisible = false,
+                    Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 14, ShadowDepth = 3, Opacity = 0.35, Color = Colors.Black }
+                };
+                ((Border)committed).BorderThickness = new Thickness(4, 0, 0, 0);
+            }
+            Canvas.SetLeft(committed, origin.X);
+            Canvas.SetTop(committed, origin.Y - _settings.FontSize * 0.2);
+            ShapeSurface.Children.Add(committed);
+            CommitAnnotation(committed);
         }
         Keyboard.ClearFocus();
         SetNoActivate(_settings.Tool != ToolKind.Select);
